@@ -1,0 +1,77 @@
+import { NextRequest, NextResponse } from 'next/server';
+import pool from '@/lib/db';
+import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { slugify } from '@/lib/utils';
+import crypto from 'crypto';
+
+// GET list of recent user ecards (optional convenience)
+export async function GET() {
+  try {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT id, template_id, user_name, preview_url, created_at FROM user_ecards ORDER BY created_at DESC LIMIT 50'
+    );
+    return NextResponse.json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error fetching user ecards:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch user ecards' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST create a new user ecard (expects preview already uploaded to Cloudinary)
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { template_id, user_name, customized_data, preview_uri } = body;
+
+    if (!template_id || !customized_data || !preview_uri) {
+      return NextResponse.json(
+        { success: false, error: 'Missing required fields' },
+        { status: 400 }
+      );
+    }
+
+    // Fetch template name to build slug part
+    const [templates] = await pool.query<RowDataPacket[]>(
+      'SELECT name FROM templates WHERE id = ? LIMIT 1',
+      [template_id]
+    );
+    const templateName = (templates[0]?.name as string | undefined) || 'card';
+    const base = slugify(templateName);
+
+    // Generate random digits for uniqueness
+    const randomDigits = (len = 8) => {
+      const bytes = crypto.randomBytes(len);
+      return Array.from(bytes).map(b => (b % 10).toString()).join('').slice(0, len);
+    };
+
+    let publicSlug = `${base}-${randomDigits(8)}`;
+    // Ensure uniqueness (try a couple of times)
+    for (let i = 0; i < 3; i++) {
+      const [exists] = await pool.query<RowDataPacket[]>(
+        'SELECT id FROM user_ecards WHERE public_slug = ? LIMIT 1',
+        [publicSlug]
+      );
+      if (!exists.length) break;
+      publicSlug = `${base}-${randomDigits(10)}`;
+    }
+
+    const [result] = await pool.query<ResultSetHeader>(
+      'INSERT INTO user_ecards (template_id, user_name, customized_data, preview_url, public_slug) VALUES (?, ?, ?, ?, ?)',
+      [template_id, user_name || null, JSON.stringify(customized_data), preview_uri, publicSlug]
+    );
+
+    return NextResponse.json({
+      success: true,
+      data: { id: result.insertId, slug: publicSlug },
+    });
+  } catch (error) {
+    console.error('Error creating user ecard:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to create user ecard' },
+      { status: 500 }
+    );
+  }
+}

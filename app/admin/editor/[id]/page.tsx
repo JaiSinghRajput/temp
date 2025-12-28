@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { Canvas, Textbox, FabricImage } from 'fabric';
+import { uploadDataUrlToCloudinary } from '@/lib/cloudinary';
 
 const PRESET_FONTS = [
   'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana',
@@ -13,6 +14,7 @@ interface TemplateData {
   name: string;
   description: string;
   template_image_url: string;
+  thumbnail_uri?: string;
   canvas_data: {
     textElements: Array<{
       id: string;
@@ -57,6 +59,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
   const [templateImageUrl, setTemplateImageUrl] = useState('/images/template.png');
   const [cloudinaryPublicId, setCloudinaryPublicId] = useState<string | null>(null);
   const [oldPublicId, setOldPublicId] = useState<string | null>(null);
+  const [oldThumbnailPublicId, setOldThumbnailPublicId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [templateData, setTemplateData] = useState<TemplateData | null>(null);
@@ -159,6 +162,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
           setTemplateImageUrl(template.template_image_url);
           setCloudinaryPublicId(template.cloudinary_public_id || null);
           setOldPublicId(template.cloudinary_public_id || null);
+          setOldThumbnailPublicId(template.thumbnail_public_id || null);
         }
       } catch (error) {
         console.error('Error loading template:', error);
@@ -251,11 +255,14 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
               fill: textData.fill,
               width: textData.width,
               textAlign: textData.textAlign as any,
+              angle: textData.angle || 0,
               originX: 'center',
               originY: 'center',
               cornerStyle: 'circle',
               cornerColor: '#3b82f6'
             });
+            // Restore lock state for admin visibility
+            (textbox as any).isLocked = Boolean((textData as any).locked);
             canvas.add(textbox);
           });
         }
@@ -396,6 +403,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
       });
 
       const thumbnailDataURL = fabricCanvas.current.toDataURL({ format: 'png', multiplier: 0.3 });
+      const thumbUpload = await uploadDataUrlToCloudinary(thumbnailDataURL, 'template-thumbnail.png');
 
       const response = await fetch(`/api/templates/${unwrappedParams.id}`, {
         method: 'PUT',
@@ -406,13 +414,15 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
           template_image_url: templateImageUrl,
           cloudinary_public_id: cloudinaryPublicId,
           old_public_id: oldPublicId,
+          thumbnail_uri: thumbUpload.secureUrl,
+          thumbnail_public_id: thumbUpload.publicId,
+          old_thumbnail_public_id: oldThumbnailPublicId,
           canvas_data: {
             textElements,
             canvasWidth: fabricCanvas.current.width,
             canvasHeight: fabricCanvas.current.height,
             customFonts: loadedCustomFonts,
           },
-          thumbnail_url: thumbnailDataURL,
         }),
       });
 
@@ -430,6 +440,24 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
       setIsSaving(false);
     }
   };
+
+  function cloudinaryPublicIdFromUrl(url: string | null | undefined): string | null {
+    try {
+      if (!url) return null;
+      const afterUpload = url.split('/upload/')[1];
+      if (!afterUpload) return null;
+      let parts = afterUpload.split('/');
+      if (parts[0]?.startsWith('v') && /^v\d+$/.test(parts[0])) {
+        parts = parts.slice(1);
+      }
+      const last = parts.pop();
+      if (!last) return null;
+      const lastNoExt = last.replace(/\.[^.]+$/, '');
+      return parts.length ? parts.join('/') + '/' + lastNoExt : lastNoExt;
+    } catch {
+      return null;
+    }
+  }
 
   const downloadImage = () => {
     if (!fabricCanvas.current) return;

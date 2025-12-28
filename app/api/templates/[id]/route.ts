@@ -21,7 +21,15 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: rows[0] });
+    const row = rows[0];
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...row,
+        thumbnail_uri: (row as any).thumbnail_url ?? null,
+        thumbnail_public_id: (row as any).thumbnail_public_id ?? null,
+      },
+    });
   } catch (error) {
     console.error('Error fetching template:', error);
     return NextResponse.json(
@@ -39,7 +47,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, template_image_url, canvas_data, thumbnail_url, is_active, cloudinary_public_id, old_public_id } = body;
+    const { name, description, template_image_url, canvas_data, is_active, cloudinary_public_id, old_public_id, thumbnail_uri, thumbnail_public_id, old_thumbnail_public_id } = body;
 
     // Delete old Cloudinary image if a new one is uploaded
     if (old_public_id && cloudinary_public_id && old_public_id !== cloudinary_public_id) {
@@ -52,17 +60,29 @@ export async function PUT(
       }
     }
 
+    // Delete old thumbnail if a new one is uploaded
+    if (old_thumbnail_public_id && thumbnail_public_id && old_thumbnail_public_id !== thumbnail_public_id) {
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/uploads/cloudinary/${encodeURIComponent(old_thumbnail_public_id)}`, {
+          method: 'DELETE',
+        });
+      } catch (err) {
+        console.error('Failed to delete old Cloudinary thumbnail:', err);
+      }
+    }
+
     const [result] = await pool.query<ResultSetHeader>(
-      'UPDATE templates SET name = ?, description = ?, template_image_url = ?, canvas_data = ?, thumbnail_url = ?, is_active = ?, cloudinary_public_id = ? WHERE id = ?',
+      'UPDATE templates SET name = ?, description = ?, template_image_url = ?, canvas_data = ?, thumbnail_url = ?, thumbnail_public_id = ?, is_active = ?, cloudinary_public_id = ? WHERE id = ?',
       [
         name,
         description || null,
         template_image_url,
         JSON.stringify(canvas_data),
-        thumbnail_url || null,
+        thumbnail_uri || null,
+        thumbnail_public_id || null,
         is_active !== undefined ? is_active : true,
         cloudinary_public_id || null,
-        id
+        id,
       ]
     );
 
@@ -93,7 +113,7 @@ export async function DELETE(
     
     // Get the template to find the publicId
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT cloudinary_public_id FROM templates WHERE id = ?',
+      'SELECT cloudinary_public_id, thumbnail_public_id FROM templates WHERE id = ?',
       [id]
     );
 
@@ -105,6 +125,7 @@ export async function DELETE(
     }
 
     const publicId = rows[0].cloudinary_public_id;
+    const thumbPublicId = (rows[0] as any).thumbnail_public_id as string | null;
 
     // Delete from Cloudinary if exists
     if (publicId) {
@@ -114,6 +135,17 @@ export async function DELETE(
         });
       } catch (err) {
         console.error('Failed to delete Cloudinary image:', err);
+      }
+    }
+
+    // Delete thumbnail if exists
+    if (thumbPublicId) {
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/uploads/cloudinary/${encodeURIComponent(thumbPublicId)}`, {
+          method: 'DELETE',
+        });
+      } catch (err) {
+        console.error('Failed to delete Cloudinary thumbnail:', err);
       }
     }
 

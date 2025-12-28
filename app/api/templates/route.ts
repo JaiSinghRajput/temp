@@ -8,7 +8,13 @@ export async function GET() {
     const [rows] = await pool.query<RowDataPacket[]>(
       'SELECT * FROM templates WHERE is_active = TRUE ORDER BY created_at DESC'
     );
-    return NextResponse.json({ success: true, data: rows });
+    // Map DB column thumbnail_url to API field thumbnail_uri
+    const data = rows.map((row) => ({
+      ...row,
+      thumbnail_uri: (row as any).thumbnail_url ?? null,
+      thumbnail_public_id: (row as any).thumbnail_public_id ?? null,
+    }));
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching templates:', error);
     return NextResponse.json(
@@ -22,7 +28,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, template_image_url, canvas_data, thumbnail_url, cloudinary_public_id } = body;
+    const { name, description, template_image_url, canvas_data, cloudinary_public_id, thumbnail_uri, thumbnail_public_id } = body;
 
     if (!name || !template_image_url || !canvas_data) {
       return NextResponse.json(
@@ -32,13 +38,21 @@ export async function POST(request: NextRequest) {
     }
 
     const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO templates (name, description, template_image_url, canvas_data, thumbnail_url, cloudinary_public_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [name, description || null, template_image_url, JSON.stringify(canvas_data), thumbnail_url || null, cloudinary_public_id || null]
+      'INSERT INTO templates (name, description, template_image_url, canvas_data, thumbnail_url, thumbnail_public_id, cloudinary_public_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [name, description || null, template_image_url, JSON.stringify(canvas_data), thumbnail_uri || null, thumbnail_public_id || null, cloudinary_public_id || null]
     );
 
     return NextResponse.json({
       success: true,
-      data: { id: result.insertId, name, description, template_image_url, canvas_data, thumbnail_url }
+      data: {
+        id: result.insertId,
+        name,
+        description,
+        template_image_url,
+        canvas_data,
+        thumbnail_uri: thumbnail_uri || null,
+        thumbnail_public_id: thumbnail_public_id || null,
+      }
     });
   } catch (error) {
     console.error('Error creating template:', error);

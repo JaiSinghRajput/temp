@@ -7,6 +7,10 @@ interface LoadImageOptions {
   containerHeight: number;
   onSuccess?: () => void;
   onError?: (error: Error) => void;
+  /**
+   * Optional cancellation hook for async image loading (helps avoid calling Fabric APIs on disposed canvases)
+   */
+  isCancelled?: () => boolean;
 }
 
 /**
@@ -19,11 +23,16 @@ export async function loadCanvasBackgroundImage({
   containerHeight,
   onSuccess,
   onError,
+  isCancelled,
 }: LoadImageOptions) {
   try {
+    if (!canvas || (isCancelled?.() ?? false)) return;
+
     const img = await FabricImage.fromURL(imageUrl, {
       crossOrigin: 'anonymous',
     });
+
+    if (!canvas || (isCancelled?.() ?? false) || !(canvas as any).lowerCanvasEl) return;
 
     const imgWidth = img.width;
     const imgHeight = img.height;
@@ -35,10 +44,18 @@ export async function loadCanvasBackgroundImage({
     const finalWidth = imgWidth * scaleFactor;
     const finalHeight = imgHeight * scaleFactor;
 
-    canvas.setDimensions({
-      width: finalWidth,
-      height: finalHeight,
-    });
+    // Guard against calling Fabric methods after the canvas was disposed (can happen during React StrictMode double-mount)
+    const hasCanvasElements = Boolean((canvas as any).lowerCanvasEl && (canvas as any).upperCanvasEl);
+    if (!hasCanvasElements) return;
+
+    canvas.setDimensions(
+      {
+        width: finalWidth,
+        height: finalHeight,
+      },
+      // Avoid triggering a recalculation on a missing element during teardown
+      { cssOnly: false }
+    );
 
     canvas.backgroundImage = img;
     img.set({

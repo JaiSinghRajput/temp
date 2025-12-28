@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, use } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Canvas, Textbox, FabricImage } from 'fabric';
+import { uploadDataUrlToCloudinary } from '@/lib/cloudinary';
 
 interface TextElement {
   id: string;
@@ -244,6 +245,43 @@ export default function EditTemplate({ params }: { params: Promise<{ id: string 
     });
   };
 
+  const shareCard = async () => {
+    if (!fabricCanvas.current || !templateData) return;
+    try {
+      // Upload rendered canvas preview to Cloudinary
+      const dataURL = fabricCanvas.current.toDataURL({ format: 'png', multiplier: 1 });
+      const upload = await uploadDataUrlToCloudinary(dataURL, 'ecard-preview.png');
+
+      // Prepare minimal customized payload
+      const customized = {
+        textElements: textElements.map(t => ({ id: t.id, text: t.text })),
+        canvasWidth: fabricCanvas.current.width,
+        canvasHeight: fabricCanvas.current.height,
+      };
+
+      const res = await fetch('/api/user-ecards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template_id: templateData.id,
+          customized_data: customized,
+          preview_uri: upload.secureUrl,
+        }),
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        // Navigate to share page with slug
+        window.location.href = `/cards/${result.data.slug}`;
+      } else {
+        alert(result.error || 'Failed to create shareable card');
+      }
+    } catch (e) {
+      console.error('Share failed:', e);
+      alert('Failed to share card');
+    }
+  };
+
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center">
@@ -342,6 +380,13 @@ export default function EditTemplate({ params }: { params: Promise<{ id: string 
             className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all transform active:scale-95 disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             Download E-Card
+          </button>
+          <button
+            onClick={shareCard}
+            disabled={loading}
+            className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all transform active:scale-95 disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            Share Link
           </button>
           <button
             onClick={resetToDefault}

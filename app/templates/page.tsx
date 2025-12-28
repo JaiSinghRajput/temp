@@ -7,7 +7,7 @@ interface Template {
   name: string;
   description: string;
   template_image_url: string;
-  thumbnail_url: string;
+  thumbnail_uri?: string | null;
   created_at: string;
 }
 
@@ -93,9 +93,9 @@ export default function TemplatesPage() {
               >
                 {/* Template Preview */}
                 <div className="relative h-64 bg-gray-100 overflow-hidden">
-                  {template.thumbnail_url ? (
+                  {(template.thumbnail_uri || template.template_image_url) ? (
                     <img
-                      src={template.thumbnail_url}
+                      src={template.thumbnail_uri || template.template_image_url}
                       alt={template.name}
                       className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                     />

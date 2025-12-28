@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Canvas, Textbox } from 'fabric';
 import { useRouter } from 'next/navigation';
-import { uploadToCloudinary } from '@/lib/cloudinary';
+import { uploadToCloudinary, uploadDataUrlToCloudinary } from '@/lib/cloudinary';
 import { loadCanvasBackgroundImage, validateImageFile } from '@/lib/canvas-utils';
 import { loadCustomFont } from '@/lib/font-utils';
 import { PRESET_FONTS, DEFAULT_TEMPLATE_IMAGE } from '@/lib/constants';
@@ -12,6 +12,7 @@ export default function AdminEditor() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvas = useRef<Canvas | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isCanvasDisposed = useRef(false);
 
   // UI States
   const [active, setActive] = useState<Textbox | null>(null);
@@ -58,6 +59,7 @@ export default function AdminEditor() {
           imageUrl: result.secureUrl,
           containerWidth: containerRef.current.clientWidth,
           containerHeight: containerRef.current.clientHeight,
+          isCancelled: () => isCanvasDisposed.current,
           onSuccess: () => setIsUploadingImage(false),
           onError: () => {
             alert('Failed to render uploaded image');
@@ -76,6 +78,8 @@ export default function AdminEditor() {
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
 
+    isCanvasDisposed.current = false;
+
     const containerWidth = containerRef.current.clientWidth;
     const containerHeight = containerRef.current.clientHeight;
 
@@ -91,6 +95,7 @@ export default function AdminEditor() {
       imageUrl: DEFAULT_TEMPLATE_IMAGE,
       containerWidth,
       containerHeight,
+      isCancelled: () => isCanvasDisposed.current,
     });
 
     const syncSidebar = () => {
@@ -115,6 +120,7 @@ export default function AdminEditor() {
     });
 
     return () => {
+      isCanvasDisposed.current = true;
       canvas.dispose();
     };
   }, []);
@@ -236,8 +242,9 @@ export default function AdminEditor() {
         };
       });
 
-      // Generate thumbnail
+      // Generate and upload final canvas thumbnail to Cloudinary
       const thumbnailDataURL = fabricCanvas.current.toDataURL({ format: 'png', multiplier: 0.3 });
+      const thumbUpload = await uploadDataUrlToCloudinary(thumbnailDataURL, 'template-thumbnail.png');
 
       const response = await fetch('/api/templates', {
         method: 'POST',
@@ -247,13 +254,14 @@ export default function AdminEditor() {
           description: templateDescription,
           template_image_url: templateImageUrl,
           cloudinary_public_id: cloudinaryPublicId,
+          thumbnail_uri: thumbUpload.secureUrl,
+          thumbnail_public_id: thumbUpload.publicId,
           canvas_data: {
             textElements,
             canvasWidth: fabricCanvas.current.width,
             canvasHeight: fabricCanvas.current.height,
             customFonts: loadedCustomFonts,
           },
-          thumbnail_url: thumbnailDataURL,
         }),
       });
 

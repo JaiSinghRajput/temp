@@ -16,7 +16,8 @@ CREATE TABLE templates (
   description TEXT,
   template_image_url TEXT NOT NULL,
   cloudinary_public_id VARCHAR(255) NULL COMMENT 'Cloudinary asset ID',
-  thumbnail_url TEXT COMMENT 'Cloudinary thumbnail URL',
+  thumbnail_url VARCHAR(512) NULL COMMENT 'Cloudinary thumbnail URL (stores thumbnail_uri)',
+  thumbnail_public_id VARCHAR(255) NULL COMMENT 'Cloudinary public ID for thumbnail',
   
   canvas_data JSON NOT NULL,
   
@@ -39,6 +40,8 @@ CREATE TABLE user_ecards (
   
   -- Reference to template
   template_id INT NOT NULL,
+  -- Public slug to make shareable, non-predictable URLs
+  public_slug VARCHAR(255) UNIQUE,
   
   -- User information (optional - can be extended for auth)
   user_name VARCHAR(255),

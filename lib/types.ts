@@ -31,7 +31,7 @@ export interface Template {
   template_image_url: string;
   cloudinary_public_id?: string;
   canvas_data: CanvasData;
-  thumbnail_url?: string;
+  thumbnail_uri?: string;
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -42,4 +42,14 @@ export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   message?: string;
+}
+
+export interface UserEcard {
+  id: number;
+  template_id: number;
+  user_name?: string | null;
+  customized_data: any;
+  preview_url: string;
+  created_at?: string;
+  updated_at?: string;
 }
