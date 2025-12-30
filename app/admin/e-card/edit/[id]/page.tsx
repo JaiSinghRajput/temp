@@ -1,18 +1,47 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
-import { Canvas, Textbox } from 'fabric';
+import { useEffect, useRef, useState, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { uploadToCloudinary, uploadDataUrlToCloudinary } from '@/lib/cloudinary';
-import { loadCanvasBackgroundImage, validateImageFile } from '@/lib/canvas-utils';
-import { loadCustomFont } from '@/lib/font-utils';
-import { PRESET_FONTS, DEFAULT_TEMPLATE_IMAGE } from '@/lib/constants';
-import type { CustomFont } from '@/lib/types';
+import { Canvas, Textbox, FabricImage } from 'fabric';
+import { uploadDataUrlToCloudinary } from '@/lib/cloudinary';
+import type { Category, Subcategory } from '@/lib/types';
 
-export default function AdminEditor() {
+const PRESET_FONTS = [
+  'Arial', 'Helvetica', 'Times New Roman', 'Georgia', 'Verdana',
+  'Courier New', 'Comic Sans MS', 'Impact', 'Trebuchet MS'
+];
+
+interface TemplateData {
+  id: number;
+  name: string;
+  description: string;
+  template_image_url: string;
+  thumbnail_uri?: string;
+  canvas_data: {
+    textElements: Array<{
+      id: string;
+      text: string;
+      label: string;
+      left: number;
+      top: number;
+      fontSize: number;
+      fontFamily: string;
+      fontWeight?: string;
+      fill: string;
+      width?: number;
+      textAlign?: string;
+      angle?: number;
+      locked?: boolean;
+    }>;
+    customFonts?: Array<{ name: string; url: string }>;
+  };
+}
+
+export default function AdminEditorById({ params }: { params: Promise<{ id: string }> }) {
+  const unwrappedParams = use(params);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvas = useRef<Canvas | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const isCanvasDisposed = useRef(false);
+  const router = useRouter();
 
   // UI States
   const [active, setActive] = useState<Textbox | null>(null);
@@ -26,111 +55,303 @@ export default function AdminEditor() {
   const [customFontUrl, setCustomFontUrl] = useState('');
   const [customFontName, setCustomFontName] = useState('');
   const [isLoadingFont, setIsLoadingFont] = useState(false);
-  const [loadedCustomFonts, setLoadedCustomFonts] = useState<CustomFont[]>([]);
+  const [loadedCustomFonts, setLoadedCustomFonts] = useState<Array<{ name: string; url: string }>>([]);
 
-  // Template Save States
+  // Template States
   const [templateName, setTemplateName] = useState('');
   const [templateDescription, setTemplateDescription] = useState('');
-  const [templateImageUrl, setTemplateImageUrl] = useState(DEFAULT_TEMPLATE_IMAGE);
+  const [templateImageUrl, setTemplateImageUrl] = useState('/images/template.png');
   const [cloudinaryPublicId, setCloudinaryPublicId] = useState<string | null>(null);
+  const [oldPublicId, setOldPublicId] = useState<string | null>(null);
+  const [oldThumbnailPublicId, setOldThumbnailPublicId] = useState<string | null>(null);
+  const [categoryId, setCategoryId] = useState(1);
+  const [subcategoryId, setSubcategoryId] = useState<number | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [templateData, setTemplateData] = useState<TemplateData | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const router = useRouter();
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const validation = validateImageFile(file);
-    if (!validation.valid) {
-      alert(validation.error);
+    if (!file.type.startsWith('image/')) {
+      alert('Please upload an image file');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image too large. Max 5MB allowed.');
       return;
     }
 
     setIsUploadingImage(true);
     try {
-      const result = await uploadToCloudinary(file);
-      setTemplateImageUrl(result.secureUrl);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch('/api/uploads/cloudinary', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await res.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Upload failed');
+      }
+
+      const imageUrl = result.secureUrl as string;
+      setTemplateImageUrl(imageUrl);
       setCloudinaryPublicId(result.publicId);
 
-      if (fabricCanvas.current && containerRef.current) {
-        await loadCanvasBackgroundImage({
-          canvas: fabricCanvas.current,
-          imageUrl: result.secureUrl,
-          containerWidth: containerRef.current.clientWidth,
-          containerHeight: containerRef.current.clientHeight,
-          isCancelled: () => isCanvasDisposed.current,
-          onSuccess: () => setIsUploadingImage(false),
-          onError: () => {
-            alert('Failed to render uploaded image');
-            setIsUploadingImage(false);
-          },
+      if (fabricCanvas.current) {
+        FabricImage.fromURL(imageUrl, {
+          crossOrigin: 'anonymous'
+        }).then((img) => {
+          const canvas = fabricCanvas.current;
+          if (!canvas) {
+            console.warn('Canvas is no longer available');
+            return;
+          }
+          const containerWidth = containerRef.current!.clientWidth;
+          const containerHeight = containerRef.current!.clientHeight;
+
+          const imgWidth = img.width;
+          const imgHeight = img.height;
+
+          const scaleX = (containerWidth - 64) / imgWidth;
+          const scaleY = (containerHeight - 64) / imgHeight;
+          const scaleFactor = Math.min(scaleX, scaleY, 1);
+
+          const finalWidth = imgWidth * scaleFactor;
+          const finalHeight = imgHeight * scaleFactor;
+
+          canvas.setDimensions({
+            width: finalWidth,
+            height: finalHeight,
+          });
+
+          canvas.backgroundImage = img;
+          img.set({
+            scaleX: finalWidth / imgWidth,
+            scaleY: finalHeight / imgHeight,
+            originX: 'left',
+            originY: 'top',
+            left: 0,
+            top: 0
+          });
+
+          canvas.requestRenderAll();
+          setIsUploadingImage(false);
+        }).catch((err) => {
+          console.error('Failed to render uploaded image:', err);
+          setIsUploadingImage(false);
         });
       } else {
         setIsUploadingImage(false);
       }
-    } catch (error: any) {
-      alert(error.message || 'Failed to upload image');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      alert('Failed to upload image');
       setIsUploadingImage(false);
     }
   };
 
+  // Load existing template
   useEffect(() => {
-    if (!canvasRef.current || !containerRef.current) return;
-
-    isCanvasDisposed.current = false;
-
-    const containerWidth = containerRef.current.clientWidth;
-    const containerHeight = containerRef.current.clientHeight;
-
-    const canvas = new Canvas(canvasRef.current, {
-      backgroundColor: '#ffffff',
-      width: containerWidth - 64,
-      height: containerHeight - 64
-    });
-    fabricCanvas.current = canvas;
-
-    loadCanvasBackgroundImage({
-      canvas,
-      imageUrl: DEFAULT_TEMPLATE_IMAGE,
-      containerWidth,
-      containerHeight,
-      isCancelled: () => isCanvasDisposed.current,
-    });
-
-    const syncSidebar = () => {
-      const selected = canvas.getActiveObject();
-      if (selected instanceof Textbox) {
-        setActive(selected);
-        setTextValue(selected.text || '');
-        setFontSize(selected.fontSize || 40);
-        setFillColor((selected.fill as string) || '#000000');
-        setFontFamily(selected.fontFamily || 'Arial');
-      } else {
-        setActive(null);
+    const fetchTemplate = async () => {
+      try {
+        const response = await fetch(`/api/templates/${unwrappedParams.id}`);
+        const result = await response.json();
+        
+        if (result.success) {
+          const template = result.data;
+          setTemplateData(template);
+          setTemplateName(template.name);
+          setTemplateDescription(template.description || '');
+          setTemplateImageUrl(template.template_image_url);
+          setCloudinaryPublicId(template.cloudinary_public_id || null);
+          setOldPublicId(template.cloudinary_public_id || null);
+          setOldThumbnailPublicId(template.thumbnail_public_id || null);
+          setCategoryId(template.category_id || 1);
+          setSubcategoryId(template.subcategory_id || null);
+        }
+      } catch (error) {
+        console.error('Error loading template:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    canvas.on('selection:created', syncSidebar);
-    canvas.on('selection:updated', syncSidebar);
-    canvas.on('selection:cleared', () => setActive(null));
-    
-    canvas.on('text:changed', (e) => {
-      if (e.target instanceof Textbox) setTextValue(e.target.text || '');
+    fetchTemplate();
+  }, [unwrappedParams.id]);
+
+  // Load categories initially
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await fetch('/api/categories');
+        const json = await res.json();
+        if (json.success) setCategories(json.data);
+      } catch (e) {
+        console.error('Failed to load categories', e);
+      }
+    };
+    loadCategories();
+  }, []);
+
+  // Load subcategories when category changes
+  useEffect(() => {
+    const loadSubcategories = async () => {
+      try {
+        setSubcategoryId(null);
+        const res = await fetch(`/api/subcategories?category_id=${categoryId}`);
+        const json = await res.json();
+        if (json.success) setSubcategories(json.data);
+      } catch (e) {
+        console.error('Failed to load subcategories', e);
+      }
+    };
+    if (categoryId) loadSubcategories();
+  }, [categoryId]);
+
+  useEffect(() => {
+    if (!canvasRef.current || !containerRef.current || !templateData) return;
+
+    // Dispose existing canvas if any
+    if (fabricCanvas.current) {
+      fabricCanvas.current.dispose();
+      fabricCanvas.current = null;
+    }
+
+    // Load custom fonts if any
+    const loadCustomFonts = async () => {
+      if (templateData.canvas_data?.customFonts) {
+        setLoadedCustomFonts(templateData.canvas_data.customFonts);
+        for (const font of templateData.canvas_data.customFonts) {
+          const id = `font-${font.name.replace(/\s+/g, '-').toLowerCase()}`;
+          if (!document.getElementById(id)) {
+            const link = document.createElement('link');
+            link.id = id;
+            link.rel = 'stylesheet';
+            link.href = font.url;
+            document.head.appendChild(link);
+            
+            try {
+              await document.fonts.load(`16px "${font.name}"`);
+            } catch (err) {
+              console.error(`Failed to load font ${font.name}:`, err);
+            }
+          }
+        }
+        await document.fonts.ready;
+      }
+    };
+
+    loadCustomFonts().then(() => {
+      const canvas = new Canvas(canvasRef.current!, {
+        backgroundColor: '#ffffff'
+      });
+      fabricCanvas.current = canvas;
+
+      const containerWidth = containerRef.current!.clientWidth;
+      const containerHeight = containerRef.current!.clientHeight;
+
+      FabricImage.fromURL(templateData.template_image_url, {
+        crossOrigin: 'anonymous'
+      }).then((img) => {
+        const canvas = fabricCanvas.current;
+        if (!canvas) return;
+
+        const imgWidth = img.width;
+        const imgHeight = img.height;
+
+        const scaleX = (containerWidth - 64) / imgWidth;
+        const scaleY = (containerHeight - 64) / imgHeight;
+        const scaleFactor = Math.min(scaleX, scaleY, 1);
+
+        const finalWidth = imgWidth * scaleFactor;
+        const finalHeight = imgHeight * scaleFactor;
+
+        canvas.setDimensions({
+          width: finalWidth,
+          height: finalHeight,
+        });
+
+        canvas.backgroundImage = img;
+        img.set({
+          scaleX: finalWidth / imgWidth,
+          scaleY: finalHeight / imgHeight,
+          originX: 'left',
+          originY: 'top',
+          left: 0,
+          top: 0
+        });
+
+        // Load existing text elements
+        if (templateData.canvas_data?.textElements) {
+          templateData.canvas_data.textElements.forEach((textData) => {
+            const textbox = new Textbox(textData.text, {
+              left: textData.left,
+              top: textData.top,
+              fontSize: textData.fontSize,
+              fontFamily: textData.fontFamily,
+              fontWeight: textData.fontWeight || 'normal',
+              fill: textData.fill,
+              width: textData.width,
+              textAlign: textData.textAlign as any,
+              angle: textData.angle || 0,
+              originX: 'center',
+              originY: 'center',
+              cornerStyle: 'circle',
+              cornerColor: '#3b82f6'
+            });
+            // Restore lock state for admin visibility
+            (textbox as any).isLocked = Boolean((textData as any).locked);
+            canvas.add(textbox);
+          });
+        }
+
+        canvas.requestRenderAll();
+      });
+
+      const syncSidebar = () => {
+        const selected = canvas.getActiveObject();
+        if (selected instanceof Textbox) {
+          setActive(selected);
+          setTextValue(selected.text || '');
+          setFontSize(selected.fontSize || 40);
+          setFillColor((selected.fill as string) || '#000000');
+          setFontFamily(selected.fontFamily || 'Arial');
+          setIsTextLocked((selected as any).isLocked || false);
+        } else {
+          setActive(null);
+        }
+      };
+
+      canvas.on('selection:created', syncSidebar);
+      canvas.on('selection:updated', syncSidebar);
+      canvas.on('selection:cleared', () => setActive(null));
+      
+      canvas.on('text:changed', (e: any) => {
+        if (e.target instanceof Textbox) setTextValue(e.target.text || '');
+      });
     });
 
     return () => {
-      isCanvasDisposed.current = true;
-      canvas.dispose();
+      if (fabricCanvas.current) {
+        fabricCanvas.current.dispose();
+        fabricCanvas.current = null;
+      }
     };
-  }, []);
+  }, [templateData]);
 
   const handleApplyCustomFont = async () => {
     if (!active || !customFontUrl || !customFontName || !fabricCanvas.current) return;
 
     setIsLoadingFont(true);
-
-    // Inject CSS Link if not exists
     const id = `font-${customFontName.replace(/\s+/g, '-').toLowerCase()}`;
     if (!document.getElementById(id)) {
       const link = document.createElement('link');
@@ -141,18 +362,15 @@ export default function AdminEditor() {
     }
 
     try {
-      // 1. Wait for the font to be loaded into the browser
       await document.fonts.load(`16px "${customFontName}"`);
-      // 2. Critical: Wait for the layout engine to be ready
       await document.fonts.ready;
 
-      // 3. Update Fabric Object
       active.set({
         fontFamily: customFontName,
-        dirty: true // Forces a redraw of the text cache
+        dirty: true
       });
 
-      active.initDimensions(); // Recalculates width/height based on new font
+      active.initDimensions();
       fabricCanvas.current.requestRenderAll();
       setFontFamily(customFontName);
 
@@ -164,7 +382,6 @@ export default function AdminEditor() {
         }
         return prev;
       });
-
     } catch (err) {
       console.error("Font loading failed:", err);
       alert("Error loading font. Please check the URL.");
@@ -205,16 +422,7 @@ export default function AdminEditor() {
     canvas.requestRenderAll();
   };
 
-  const downloadImage = () => {
-    if (!fabricCanvas.current) return;
-    const dataURL = fabricCanvas.current.toDataURL({ format: 'png', multiplier: 2 });
-    const link = document.createElement('a');
-    link.download = 'design.png';
-    link.href = dataURL;
-    link.click();
-  };
-
-  const saveTemplate = async () => {
+  const updateTemplate = async () => {
     if (!fabricCanvas.current || !templateName.trim()) {
       alert('Please enter a template name');
       return;
@@ -222,7 +430,6 @@ export default function AdminEditor() {
 
     setIsSaving(true);
     try {
-      // Get all text objects from canvas
       const objects = fabricCanvas.current.getObjects();
       const textElements = objects.filter(obj => obj instanceof Textbox).map((obj, index) => {
         const textbox = obj as Textbox;
@@ -242,20 +449,23 @@ export default function AdminEditor() {
         };
       });
 
-      // Generate and upload final canvas thumbnail to Cloudinary
       const thumbnailDataURL = fabricCanvas.current.toDataURL({ format: 'png', multiplier: 0.3 });
       const thumbUpload = await uploadDataUrlToCloudinary(thumbnailDataURL, 'template-thumbnail.png');
 
-      const response = await fetch('/api/templates', {
-        method: 'POST',
+      const response = await fetch(`/api/templates/${unwrappedParams.id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: templateName,
           description: templateDescription,
           template_image_url: templateImageUrl,
           cloudinary_public_id: cloudinaryPublicId,
+          old_public_id: oldPublicId,
           thumbnail_uri: thumbUpload.secureUrl,
           thumbnail_public_id: thumbUpload.publicId,
+          old_thumbnail_public_id: oldThumbnailPublicId,
+          category_id: categoryId,
+          subcategory_id: subcategoryId,
           canvas_data: {
             textElements,
             canvasWidth: fabricCanvas.current.width,
@@ -267,38 +477,68 @@ export default function AdminEditor() {
 
       const result = await response.json();
       if (result.success) {
-        alert('Template saved successfully!');
+        alert('Template updated successfully!');
         router.push('/templates');
       } else {
-        alert('Failed to save template: ' + result.error);
+        alert('Failed to update template: ' + result.error);
       }
     } catch (error) {
-      console.error('Error saving template:', error);
-      alert('Error saving template');
+      console.error('Error updating template:', error);
+      alert('Error updating template');
     } finally {
       setIsSaving(false);
     }
   };
 
+  function cloudinaryPublicIdFromUrl(url: string | null | undefined): string | null {
+    try {
+      if (!url) return null;
+      const afterUpload = url.split('/upload/')[1];
+      if (!afterUpload) return null;
+      let parts = afterUpload.split('/');
+      if (parts[0]?.startsWith('v') && /^v\d+$/.test(parts[0])) {
+        parts = parts.slice(1);
+      }
+      const last = parts.pop();
+      if (!last) return null;
+      const lastNoExt = last.replace(/\.[^.]+$/, '');
+      return parts.length ? parts.join('/') + '/' + lastNoExt : lastNoExt;
+    } catch {
+      return null;
+    }
+  }
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p>Loading template...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-gray-100 font-sans text-gray-900 overflow-hidden">
-      {/* Canvas Area */}
       <div ref={containerRef} className="flex-1 p-8 flex justify-center items-center bg-slate-200 overflow-auto">
         <div className="shadow-2xl rounded-lg overflow-hidden border border-gray-200 bg-white">
           <canvas ref={canvasRef} />
         </div>
       </div>
 
-      {/* Sidebar */}
       <div className="w-96 bg-white border-l border-gray-200 shadow-xl flex flex-col p-6 gap-6 overflow-y-auto">
         <div className="flex justify-between items-center border-b pb-4">
-          <h1 className="text-xl font-bold text-gray-800">Editor</h1>
-          <button onClick={downloadImage} className="bg-emerald-600 text-white px-4 py-1.5 rounded-full text-xs font-bold hover:bg-emerald-700 transition uppercase tracking-wider">
-            Export PNG
-          </button>
+          <div>
+            <h1 className="text-xl font-bold text-gray-800">Edit Template</h1>
+          </div>
+            <button
+              onClick={() => router.push('/admin/e-card')}
+              className="text-xl text-gray-600 hover:text-gray-900"
+            >
+              ✕
+            </button>
         </div>
 
-        {/* Template Info Section */}
         <div className="bg-purple-50 p-4 rounded-xl space-y-3 border border-purple-100">
           <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Template Information</label>
           <input
@@ -315,6 +555,33 @@ export default function AdminEditor() {
             value={templateDescription}
             onChange={(e) => setTemplateDescription(e.target.value)}
           />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Category</label>
+                <select
+                  className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(parseInt(e.target.value, 10) || 1)}
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Subcategory</label>
+                <select
+                  className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                  value={subcategoryId ?? ''}
+                  onChange={(e) => setSubcategoryId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                >
+                  <option value="">None</option>
+                  {subcategories.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           
           {/* Image Upload */}
           <div className="space-y-2">
@@ -336,25 +603,26 @@ export default function AdminEditor() {
                   Uploading...
                 </>
               ) : (
-                '📷 Upload Background Image'
+                '📷 Upload New Background'
               )}
             </label>
             {templateImageUrl && templateImageUrl !== '/images/template.png' && (
-              <p className="text-xs text-purple-600 truncate">Image uploaded ✓</p>
+              <p className="text-xs text-purple-600 truncate">Image updated ✓</p>
             )}
           </div>
+          
           <button
-            onClick={saveTemplate}
+            onClick={updateTemplate}
             disabled={isSaving || !templateName.trim()}
             className="w-full h-12 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2"
           >
             {isSaving ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Saving Template...
+                Updating...
               </>
             ) : (
-              '💾 Save Template to Database'
+              '💾 Update Template'
             )}
           </button>
         </div>
@@ -436,7 +704,6 @@ export default function AdminEditor() {
               </p>
             </div>
 
-            {/* Custom Font Section */}
             <div className="bg-indigo-50 p-5 rounded-2xl space-y-3 border border-indigo-100">
               <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Custom Google Font</label>
               <input

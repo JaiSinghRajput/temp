@@ -24,10 +24,12 @@ interface TemplateData {
       top: number;
       fontSize: number;
       fontFamily: string;
+      fontWeight?: string;
       fill: string;
       width?: number;
       textAlign?: string;
       angle?: number;
+      locked?: boolean;
     }>;
     canvasWidth: number;
     canvasHeight: number;
@@ -47,6 +49,7 @@ export default function EditTemplate({ params }: { params: Promise<{ id: string 
   const [loading, setLoading] = useState(true);
   const [templateData, setTemplateData] = useState<TemplateData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
 
   // Fetch template from database
   useEffect(() => {
@@ -173,11 +176,17 @@ export default function EditTemplate({ params }: { params: Promise<{ id: string 
               hasBorders: false, // Remove selection borders
               selectable: false, // Make non-selectable on canvas
               editable: false, // Prevent direct editing on canvas
-              hoverCursor: 'default',
+              hoverCursor: 'pointer',
             });
 
-            // Store locked status on textbox
+            // Store locked status and id on textbox
             (textbox as any).isLocked = data.locked || false;
+            (textbox as any).textId = data.id;
+
+            // Add click handler for mobile modal
+            textbox.on('mousedown', () => {
+              setSelectedTextId(data.id);
+            });
 
             canvas.add(textbox);
             textObjects.current.set(data.id, textbox);
@@ -284,14 +293,14 @@ export default function EditTemplate({ params }: { params: Promise<{ id: string 
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center">
-        <div className="text-center bg-white p-10 rounded-2xl shadow-2xl max-w-md">
-          <div className="text-6xl mb-4">❌</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Error</h2>
-          <p className="text-gray-600 mb-6">{error}</p>
+      <div className="min-h-screen bg-linear-to-br from-red-50 to-orange-50 flex items-center justify-center p-4">
+        <div className="text-center bg-white p-6 md:p-10 rounded-2xl shadow-2xl max-w-md w-full">
+          <div className="text-4xl md:text-6xl mb-4">❌</div>
+          <h2 className="text-xl md:text-2xl font-bold text-gray-800 mb-2">Error</h2>
+          <p className="text-sm md:text-base text-gray-600 mb-6">{error}</p>
           <button
             onClick={() => router.push('/templates')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-bold transition text-sm md:text-base"
           >
             Back to Templates
           </button>
@@ -301,23 +310,23 @@ export default function EditTemplate({ params }: { params: Promise<{ id: string 
   }
 
   return (
-    <div className="flex h-screen bg-gray-100 font-sans text-gray-900 overflow-hidden">
+    <div className="flex flex-col md:flex-row min-h-screen bg-gray-100 font-sans text-gray-900">
       {/* Canvas Area */}
-      <div ref={containerRef} className="flex-1 p-8 flex justify-center items-center bg-gradient-to-br from-blue-50 to-purple-50 overflow-auto">
+      <div ref={containerRef} className="w-full md:flex-1 p-3 md:p-8 flex justify-center items-center bg-linear-to-br from-blue-50 to-purple-50 overflow-auto min-h-[40vh] md:min-h-screen">
         {loading ? (
           <div className="text-center">
             <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading template...</p>
+            <p className="text-gray-600 text-sm md:text-base">Loading template...</p>
           </div>
         ) : (
-          <div className="shadow-2xl rounded-lg overflow-hidden border border-gray-200 bg-white">
+          <div className="shadow-2xl rounded-lg overflow-hidden border border-gray-200 bg-white max-w-full">
             <canvas ref={canvasRef} />
           </div>
         )}
       </div>
 
-      {/* Sidebar - Text Editing Only */}
-      <div className="w-96 bg-white border-l border-gray-200 shadow-xl flex flex-col p-6 gap-6 overflow-y-auto">
+      {/* Sidebar - Hidden on mobile, shown on desktop */}
+      <div className="hidden md:flex w-96 bg-white border-l border-gray-200 shadow-xl flex-col p-6 gap-6 overflow-y-auto">
         <div className="border-b pb-4">
           <button
             onClick={() => router.push('/templates')}
@@ -348,22 +357,45 @@ export default function EditTemplate({ params }: { params: Promise<{ id: string 
             );
           }
 
+          const selectedElement = visible.find(el => el.id === selectedTextId);
+
           return (
-            <div className="space-y-4 flex-1">
-              {visible.map((element) => (
-                <div key={element.id} className="p-4 rounded-xl border bg-gray-50 border-gray-200">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2 block flex items-center justify-between">
-                    <span>{element.label}</span>
+            <div className="flex-1 flex flex-col gap-4">
+              {/* Field Selection List */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider block">Select Field</label>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {visible.map((element) => (
+                    <button
+                      key={element.id}
+                      onClick={() => setSelectedTextId(element.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg border transition ${
+                        selectedTextId === element.id
+                          ? 'bg-blue-100 border-blue-500 text-blue-900 font-semibold'
+                          : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      {element.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Field Editor - Only show selected field */}
+              {selectedElement && (
+                <div className="p-4 rounded-xl border bg-blue-50 border-blue-200">
+                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2 block">
+                    {selectedElement.label}
                   </label>
                   <textarea
                     className="w-full p-3 border rounded-lg bg-white outline-none text-sm resize-none transition border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    rows={2}
-                    value={element.text}
-                    onChange={(e) => handleTextChange(element.id, e.target.value)}
-                    placeholder={`Enter ${element.label.toLowerCase()}...`}
+                    rows={4}
+                    value={selectedElement.text}
+                    onChange={(e) => handleTextChange(selectedElement.id, e.target.value)}
+                    placeholder={`Enter ${selectedElement.label.toLowerCase()}...`}
                   />
                 </div>
-              ))}
+              )}
             </div>
           );
         })() : (
@@ -405,6 +437,64 @@ export default function EditTemplate({ params }: { params: Promise<{ id: string 
           </p>
         </div>
       </div>
+
+      {/* Mobile Modal for Text Editing */}
+      {selectedTextId && textElements.find(el => el.id === selectedTextId) && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end md:hidden z-50">
+          <div className="w-full bg-white rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-gray-800">
+                {textElements.find(el => el.id === selectedTextId)?.label}
+              </h2>
+              <button
+                onClick={() => setSelectedTextId(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <textarea
+                className="w-full p-4 border rounded-lg bg-white outline-none text-base resize-none transition border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                rows={4}
+                value={textElements.find(el => el.id === selectedTextId)?.text || ''}
+                onChange={(e) => handleTextChange(selectedTextId, e.target.value)}
+                placeholder={`Enter ${textElements.find(el => el.id === selectedTextId)?.label.toLowerCase()}...`}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => setSelectedTextId(null)}
+                className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Action Buttons Footer - only visible on mobile when no modal is open */}
+      {!selectedTextId && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 space-y-2 z-40">
+          <button
+            onClick={downloadImage}
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold text-sm hover:bg-blue-700 transition disabled:bg-gray-300"
+          >
+            Download E-Card
+          </button>
+          <button
+            onClick={shareCard}
+            disabled={loading}
+            className="w-full bg-emerald-600 text-white py-2 rounded-lg font-bold text-sm hover:bg-emerald-700 transition disabled:bg-gray-300"
+          >
+            Share Link
+          </button>
+        </div>
+      )}
     </div>
   );
 }

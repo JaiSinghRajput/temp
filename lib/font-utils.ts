@@ -13,7 +13,6 @@ export async function loadCustomFont(font: CustomFont): Promise<void> {
   if (document.getElementById(id)) {
     return;
   }
-
   // Inject stylesheet
   const link = document.createElement('link');
   link.id = id;

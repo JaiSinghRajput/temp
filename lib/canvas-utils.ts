@@ -1,5 +1,4 @@
 import { FabricImage, Canvas } from 'fabric';
-
 interface LoadImageOptions {
   canvas: Canvas;
   imageUrl: string;

@@ -7,7 +7,7 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME || 'ecard_shop',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 5
 });
 
 export default pool;

@@ -10,7 +10,11 @@ export async function GET(
   try {
     const { id } = await params;
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT * FROM templates WHERE id = ? AND is_active = TRUE',
+      `SELECT t.*, cc.name AS category_name, cs.name AS subcategory_name
+       FROM templates t
+       LEFT JOIN card_categories cc ON cc.id = t.category_id
+       LEFT JOIN card_subcategories cs ON cs.id = t.subcategory_id
+       WHERE t.id = ? AND t.is_active = TRUE`,
       [id]
     );
 
@@ -28,6 +32,8 @@ export async function GET(
         ...row,
         thumbnail_uri: (row as any).thumbnail_url ?? null,
         thumbnail_public_id: (row as any).thumbnail_public_id ?? null,
+        category_name: (row as any).category_name ?? null,
+        subcategory_name: (row as any).subcategory_name ?? null,
       },
     });
   } catch (error) {
@@ -47,7 +53,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, template_image_url, canvas_data, is_active, cloudinary_public_id, old_public_id, thumbnail_uri, thumbnail_public_id, old_thumbnail_public_id } = body;
+    const { name, description, template_image_url, canvas_data, is_active, cloudinary_public_id, old_public_id, thumbnail_uri, thumbnail_public_id, old_thumbnail_public_id, category_id, subcategory_id } = body;
 
     // Delete old Cloudinary image if a new one is uploaded
     if (old_public_id && cloudinary_public_id && old_public_id !== cloudinary_public_id) {
@@ -72,7 +78,7 @@ export async function PUT(
     }
 
     const [result] = await pool.query<ResultSetHeader>(
-      'UPDATE templates SET name = ?, description = ?, template_image_url = ?, canvas_data = ?, thumbnail_url = ?, thumbnail_public_id = ?, is_active = ?, cloudinary_public_id = ? WHERE id = ?',
+      'UPDATE templates SET name = ?, description = ?, template_image_url = ?, canvas_data = ?, thumbnail_url = ?, thumbnail_public_id = ?, is_active = ?, cloudinary_public_id = ?, category_id = ?, subcategory_id = ? WHERE id = ?',
       [
         name,
         description || null,
@@ -82,6 +88,8 @@ export async function PUT(
         thumbnail_public_id || null,
         is_active !== undefined ? is_active : true,
         cloudinary_public_id || null,
+        category_id || 1,
+        subcategory_id || null,
         id,
       ]
     );

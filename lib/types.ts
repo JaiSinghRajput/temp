@@ -10,6 +10,7 @@ export interface TextElement {
   top: number;
   fontSize: number;
   fontFamily: string;
+  fontWeight?: string;
   fill: string;
   width?: number;
   textAlign?: string;
@@ -35,6 +36,10 @@ export interface Template {
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;
+  category_id?: number;
+  subcategory_id?: number | null;
+  category_name?: string;
+  subcategory_name?: string | null;
 }
 
 export interface ApiResponse<T = any> {
@@ -52,4 +57,17 @@ export interface UserEcard {
   preview_url: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface Category {
+  id: number;
+  name: string;
+  description?: string | null;
+}
+
+export interface Subcategory {
+  id: number;
+  category_id: number;
+  name: string;
+  slug: string;
 }

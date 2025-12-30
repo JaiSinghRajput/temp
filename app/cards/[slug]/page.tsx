@@ -75,7 +75,7 @@ export default function ShareableCard({ params }: { params: Promise<{ slug: stri
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12">
+    <div className="min-h-screen bg-linear-to-br from-blue-50 to-purple-50 py-12">
       <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-6 border border-gray-200">
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-xl font-bold">Your E-Card</h1>

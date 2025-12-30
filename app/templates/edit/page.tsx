@@ -23,9 +23,12 @@ interface TemplateData {
       top: number;
       fontSize: number;
       fontFamily: string;
+      fontWeight?: string;
       fill: string;
       width?: number;
       textAlign?: string;
+      angle?: number;
+      locked?: boolean;
     }>;
     canvasWidth: number;
     canvasHeight: number;
@@ -206,7 +209,7 @@ export default function EditTemplate({ params }: { params: { id: string } }) {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center">
+      <div className="min-h-screen bg-linear-to-br from-red-50 to-orange-50 flex items-center justify-center">
         <div className="text-center bg-white p-10 rounded-2xl shadow-2xl max-w-md">
           <div className="text-6xl mb-4">❌</div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Error</h2>
@@ -225,7 +228,7 @@ export default function EditTemplate({ params }: { params: { id: string } }) {
   return (
     <div className="flex h-screen bg-gray-100 font-sans text-gray-900 overflow-hidden">
       {/* Canvas Area */}
-      <div ref={containerRef} className="flex-1 p-8 flex justify-center items-center bg-gradient-to-br from-blue-50 to-purple-50 overflow-auto">
+      <div ref={containerRef} className="flex-1 p-8 flex justify-center items-center bg-linear-to-br from-blue-50 to-purple-50 overflow-auto">
         {loading ? (
           <div className="text-center">
             <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
