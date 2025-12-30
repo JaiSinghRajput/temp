@@ -1,7 +1,7 @@
 "use client";
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Drawer,
   List,
@@ -20,7 +20,9 @@ import {
   ExpandLess,
   ExpandMore,
   Home as HomeIcon,
+  Logout as LogoutIcon,
 } from '@mui/icons-material';
+import { useAuth } from '@/contexts/AuthContext';
 
 type Item = { name: string; href: string };
 type Section = { key: string; title: string; items?: Item[]; href?: string };
@@ -29,6 +31,9 @@ const DRAWER_WIDTH = 256;
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { logout } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const sections: Section[] = useMemo(
     () => [
@@ -208,6 +213,37 @@ export function AdminSidebar() {
       {/* Footer */}
       <Divider />
       <Box sx={{ p: 1.5 }}>
+        <ListItemButton
+          onClick={async () => {
+            try {
+              setIsLoggingOut(true);
+              await logout();
+              router.push('/admin/login');
+            } finally {
+              setIsLoggingOut(false);
+            }
+          }}
+          disabled={isLoggingOut}
+          sx={{
+            borderRadius: 1,
+            mb: 0.5,
+            '&:hover': {
+              backgroundColor: 'action.hover',
+            },
+          }}
+        >
+          <ListItemIcon sx={{ minWidth: 36 }}>
+            <LogoutIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText
+            primary={isLoggingOut ? 'Logging out...' : 'Logout'}
+            primaryTypographyProps={{
+              variant: 'body2',
+              fontSize: '0.875rem',
+            }}
+          />
+        </ListItemButton>
+
         <ListItemButton
           component={Link}
           href="/"

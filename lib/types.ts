@@ -1,5 +1,4 @@
 import { CustomFont } from './font-utils';
-
 export type { CustomFont };
 
 export interface TextElement {
@@ -25,13 +24,24 @@ export interface CanvasData {
   customFonts?: CustomFont[];
 }
 
+export interface TemplatePage {
+  imageUrl?: string;
+  backgroundId?: number;
+  canvasData: CanvasData;
+  cloudinaryPublicId?: string;
+}
+
 export interface Template {
   id: number;
   name: string;
   description: string;
   template_image_url: string;
+  background_id?: number;
   cloudinary_public_id?: string;
   canvas_data: CanvasData;
+  // Multi-page support
+  is_multipage?: boolean;
+  pages?: TemplatePage[];
   thumbnail_uri?: string;
   is_active?: boolean;
   created_at?: string;
@@ -40,6 +50,17 @@ export interface Template {
   subcategory_id?: number | null;
   category_name?: string;
   subcategory_name?: string | null;
+}
+
+export interface BackgroundAsset {
+  id: number;
+  cloudinary_public_id: string;
+  cloudinary_url: string;
+  image_hash: string;
+  width: number;
+  height: number;
+  file_size?: number;
+  usage_count?: number;
 }
 
 export interface ApiResponse<T = any> {
@@ -55,6 +76,7 @@ export interface UserEcard {
   user_name?: string | null;
   customized_data: any;
   preview_url: string;
+  preview_urls?: string[]; // Multi-page support
   created_at?: string;
   updated_at?: string;
 }
@@ -70,4 +92,35 @@ export interface Subcategory {
   category_id: number;
   name: string;
   slug: string;
+}
+
+export interface Admin {
+  id: number;
+  name: string;
+  email: string;
+  password: string;
+  role: 'admin' | 'super_admin';
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface User {
+  id: number;
+  phone: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  otp?: string;
+  otp_expires_at?: Date;
+  status: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AuthPayload {
+  id: number;
+  name: string;
+  email?: string | null;
+  mobile?: string | null;
+  role: string;
 }

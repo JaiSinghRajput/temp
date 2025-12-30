@@ -4,6 +4,56 @@ CREATE DATABASE IF NOT EXISTS ecard_shop
 
 USE ecard_shop;
 
+-- Admin Users Table
+CREATE TABLE IF NOT EXISTS admins (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  password VARCHAR(255) NOT NULL,
+  role ENUM('admin', 'super_admin') DEFAULT 'admin',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_email (email),
+  INDEX idx_role (role)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='Admin users for e-card management';
+
+-- Guest/Mobile Users Table
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  phone VARCHAR(20) NOT NULL UNIQUE,
+  email VARCHAR(255) UNIQUE,
+  first_name VARCHAR(255),
+  last_name VARCHAR(255),
+  otp VARCHAR(6),
+  otp_expires_at TIMESTAMP NULL,
+  status BOOLEAN DEFAULT 0 COMMENT '0 = unverified, 1 = verified',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_phone (phone),
+  INDEX idx_email (email),
+  INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='Mobile app users logged in via OTP';
+
+-- Background Assets Table (for deduplication)
+CREATE TABLE IF NOT EXISTS backgrounds (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  cloudinary_public_id VARCHAR(255) NOT NULL UNIQUE,
+  cloudinary_url VARCHAR(512) NOT NULL,
+  image_hash VARCHAR(64) NOT NULL UNIQUE COMMENT 'SHA256 hash of image for deduplication',
+  width INT,
+  height INT,
+  file_size INT,
+  usage_count INT DEFAULT 1 COMMENT 'Track how many templates use this background',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_hash (image_hash),
+  INDEX idx_public_id (cloudinary_public_id),
+  INDEX idx_usage_count (usage_count)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='Deduplicated background assets - reuse across templates and pages';
+
 DROP TABLE IF EXISTS user_ecards;
 DROP TABLE IF EXISTS templates;
 
@@ -14,10 +64,14 @@ CREATE TABLE templates (
   name VARCHAR(255) NOT NULL,
   description TEXT,
   template_image_url TEXT NOT NULL,
-  cloudinary_public_id VARCHAR(255) NULL COMMENT 'Cloudinary asset ID',
+  background_id INT NULL COMMENT 'Reference to deduplicated background',
+  cloudinary_public_id VARCHAR(255) NULL COMMENT 'Cloudinary asset ID (legacy)',
   thumbnail_url VARCHAR(512) NULL COMMENT 'Cloudinary thumbnail URL (stores thumbnail_uri)',
   thumbnail_public_id VARCHAR(255) NULL COMMENT 'Cloudinary public ID for thumbnail',
   canvas_data JSON NOT NULL,
+  -- Multi-page support
+  pages JSON NULL COMMENT 'Array of page data for multi-page templates: [{ backgroundId, canvasData }]',
+  is_multipage BOOLEAN DEFAULT FALSE COMMENT 'Whether template has multiple pages',
   -- Status and timestamps
   is_active BOOLEAN DEFAULT TRUE COMMENT 'Soft delete flag',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -31,7 +85,10 @@ CREATE TABLE templates (
   INDEX idx_created_at (created_at),
   INDEX idx_cloudinary_public_id (cloudinary_public_id),
   INDEX idx_category_id (category_id),
-  INDEX idx_subcategory_id (subcategory_id)
+  INDEX idx_subcategory_id (subcategory_id),
+  INDEX idx_is_multipage (is_multipage),
+  INDEX idx_background_id (background_id),
+  FOREIGN KEY (background_id) REFERENCES backgrounds(id) ON DELETE SET NULL
   
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='Admin-created e-card templates';
@@ -51,6 +108,8 @@ CREATE TABLE user_ecards (
   
   -- Final rendered preview
   preview_url VARCHAR(512) COMMENT 'Cloudinary preview URL',
+  -- Multi-page previews
+  preview_urls JSON NULL COMMENT 'Array of preview URLs for multi-page cards',
   
   -- Timestamps
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

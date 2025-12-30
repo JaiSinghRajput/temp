@@ -127,7 +127,7 @@ export default function SubcategoriesPage() {
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-50 to-purple-50">
       <AdminHeader
-        title="📋 Subcategories"
+        title="Subcategories"
         subtitle="Manage subcategories by category"
         containerClass="max-w-6xl"
         actions={[

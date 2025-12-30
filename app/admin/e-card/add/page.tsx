@@ -39,6 +39,12 @@ export default function AdminEditor() {
   const [subcategoryId, setSubcategoryId] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  // Multipage States
+  const [isMultipage, setIsMultipage] = useState(false);
+  const [pages, setPages] = useState<Array<{ imageUrl: string; publicId: string; canvasData?: any }>>([]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+
   const router = useRouter();
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,9 +59,67 @@ export default function AdminEditor() {
 
     setIsUploadingImage(true);
     try {
-      const result = await uploadToCloudinary(file);
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/uploads/background', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const uploadResult = await response.json();
+      if (!uploadResult.success) {
+        throw new Error('Failed to upload image');
+      }
+
+      const result = {
+        secureUrl: uploadResult.data.cloudinary_url,
+        publicId: uploadResult.data.cloudinary_public_id,
+      };
+
       setTemplateImageUrl(result.secureUrl);
       setCloudinaryPublicId(result.publicId);
+
+      // If multipage mode and pages exist, update current page
+      if (isMultipage && pages.length > 0) {
+        // Save current text elements before updating background
+        const objects = fabricCanvas.current?.getObjects() || [];
+        const textElements = objects.filter(obj => obj instanceof Textbox).map((obj, i) => {
+          const textbox = obj as Textbox;
+          return {
+            id: String(i + 1),
+            text: textbox.text || '',
+            label: `Text Field ${i + 1}`,
+            left: textbox.left,
+            top: textbox.top,
+            fontSize: textbox.fontSize,
+            fontWeight: textbox.fontWeight,
+            fontFamily: textbox.fontFamily,
+            fill: textbox.fill,
+            width: textbox.width,
+            textAlign: textbox.textAlign,
+            angle: textbox.angle || 0,
+            locked: (textbox as any).isLocked || false,
+          };
+        });
+
+        const updatedPages = [...pages];
+        updatedPages[currentPageIndex] = {
+          imageUrl: result.secureUrl,
+          publicId: result.publicId,
+          canvasData: {
+            textElements,
+            canvasWidth: fabricCanvas.current?.width || 800,
+            canvasHeight: fabricCanvas.current?.height || 600,
+          },
+        };
+        setPages(updatedPages);
+
+        // Clear and reload canvas to maintain text elements
+        if (fabricCanvas.current) {
+          fabricCanvas.current.clear();
+        }
+      }
 
       if (fabricCanvas.current && containerRef.current) {
         await loadCanvasBackgroundImage({
@@ -64,7 +128,32 @@ export default function AdminEditor() {
           containerWidth: containerRef.current.clientWidth,
           containerHeight: containerRef.current.clientHeight,
           isCancelled: () => isCanvasDisposed.current,
-          onSuccess: () => setIsUploadingImage(false),
+          onSuccess: () => {
+            // Restore text elements after background update in multipage mode
+            if (isMultipage && pages.length > 0 && pages[currentPageIndex]?.canvasData?.textElements) {
+              pages[currentPageIndex].canvasData.textElements.forEach((element: any) => {
+                const tb = new Textbox(element.text, {
+                  left: element.left,
+                  top: element.top,
+                  fontSize: element.fontSize,
+                  fontWeight: element.fontWeight,
+                  fontFamily: element.fontFamily,
+                  fill: element.fill,
+                  width: element.width,
+                  textAlign: element.textAlign,
+                  angle: element.angle || 0,
+                  originX: 'center',
+                  originY: 'center',
+                  cornerStyle: 'circle',
+                  cornerColor: '#3b82f6'
+                });
+                (tb as any).isLocked = element.locked || false;
+                fabricCanvas.current?.add(tb);
+              });
+              fabricCanvas.current?.requestRenderAll();
+            }
+            setIsUploadingImage(false);
+          },
           onError: () => {
             alert('Failed to render uploaded image');
             setIsUploadingImage(false);
@@ -92,6 +181,48 @@ export default function AdminEditor() {
     };
     loadCategories();
   }, []);
+
+  // When multipage is toggled on, initialize first page from current canvas
+  useEffect(() => {
+    if (isMultipage && pages.length === 0 && fabricCanvas.current && templateImageUrl && cloudinaryPublicId) {
+      // Capture current canvas state as first page
+      const objects = fabricCanvas.current.getObjects();
+      const textElements = objects.filter(obj => obj instanceof Textbox).map((obj, i) => {
+        const textbox = obj as Textbox;
+        return {
+          id: String(i + 1),
+          text: textbox.text || '',
+          label: `Text Field ${i + 1}`,
+          left: textbox.left,
+          top: textbox.top,
+          fontSize: textbox.fontSize,
+          fontWeight: textbox.fontWeight,
+          fontFamily: textbox.fontFamily,
+          fill: textbox.fill,
+          width: textbox.width,
+          textAlign: textbox.textAlign,
+          angle: textbox.angle || 0,
+          locked: (textbox as any).isLocked || false,
+        };
+      });
+
+      const firstPage = {
+        imageUrl: templateImageUrl,
+        publicId: cloudinaryPublicId,
+        canvasData: {
+          textElements,
+          canvasWidth: fabricCanvas.current.width,
+          canvasHeight: fabricCanvas.current.height,
+        },
+      };
+      setPages([firstPage]);
+      setCurrentPageIndex(0);
+    } else if (!isMultipage && pages.length > 0) {
+      // When multipage is disabled, clear pages
+      setPages([]);
+      setCurrentPageIndex(0);
+    }
+  }, [isMultipage]);
 
   // Load subcategories when category changes
   useEffect(() => {
@@ -262,9 +393,14 @@ export default function AdminEditor() {
       return;
     }
 
+    if (isMultipage && pages.length === 0) {
+      alert('Please add at least one page for multipage templates');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      // Get all text objects from canvas
+      // Get all text objects from current canvas
       const objects = fabricCanvas.current.getObjects();
       const textElements = objects.filter(obj => obj instanceof Textbox).map((obj, index) => {
         const textbox = obj as Textbox;
@@ -285,9 +421,39 @@ export default function AdminEditor() {
         };
       });
 
+      // If multipage, save current page data before saving template
+      if (isMultipage && pages[currentPageIndex]) {
+        pages[currentPageIndex].canvasData = {
+          textElements,
+          canvasWidth: fabricCanvas.current.width,
+          canvasHeight: fabricCanvas.current.height,
+        };
+      }
+
       // Generate and upload final canvas thumbnail to Cloudinary
       const thumbnailDataURL = fabricCanvas.current.toDataURL({ format: 'png', multiplier: 0.3 });
       const thumbUpload = await uploadDataUrlToCloudinary(thumbnailDataURL, 'template-thumbnail.png');
+
+      // Prepare canvas data - for multipage include all pages, otherwise just current page
+      let canvasData: any = {
+        textElements,
+        canvasWidth: fabricCanvas.current.width,
+        canvasHeight: fabricCanvas.current.height,
+        customFonts: loadedCustomFonts,
+      };
+
+      if (isMultipage) {
+        canvasData.pages = pages.map((page) => ({
+          backgroundId: null,
+          cloudinaryPublicId: page.publicId,
+          imageUrl: page.imageUrl,
+          canvasData: page.canvasData || {
+            textElements: [],
+            canvasWidth: fabricCanvas.current?.width || 800,
+            canvasHeight: fabricCanvas.current?.height || 600,
+          },
+        }));
+      }
 
       const response = await fetch('/api/templates', {
         method: 'POST',
@@ -301,12 +467,8 @@ export default function AdminEditor() {
           thumbnail_public_id: thumbUpload.publicId,
           category_id: categoryId,
           subcategory_id: subcategoryId,
-          canvas_data: {
-            textElements,
-            canvasWidth: fabricCanvas.current.width,
-            canvasHeight: fabricCanvas.current.height,
-            customFonts: loadedCustomFonts,
-          },
+          is_multipage: isMultipage,
+          canvas_data: canvasData,
         }),
       });
 
@@ -325,6 +487,185 @@ export default function AdminEditor() {
     }
   };
 
+  const addPage = async () => {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        setIsUploadingImage(true);
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/uploads/background', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          // Save current page data before adding new page
+          if (fabricCanvas.current && pages[currentPageIndex]) {
+            const objects = fabricCanvas.current.getObjects();
+            const textElements = objects.filter(obj => obj instanceof Textbox).map((obj, i) => {
+              const textbox = obj as Textbox;
+              return {
+                id: String(i + 1),
+                text: textbox.text || '',
+                label: `Text Field ${i + 1}`,
+                left: textbox.left,
+                top: textbox.top,
+                fontSize: textbox.fontSize,
+                fontWeight: textbox.fontWeight,
+                fontFamily: textbox.fontFamily,
+                fill: textbox.fill,
+                width: textbox.width,
+                textAlign: textbox.textAlign,
+                angle: textbox.angle || 0,
+                locked: (textbox as any).isLocked || false,
+              };
+            });
+            pages[currentPageIndex].canvasData = {
+              textElements,
+              canvasWidth: fabricCanvas.current.width,
+              canvasHeight: fabricCanvas.current.height,
+            };
+          }
+
+          const newPage = {
+            imageUrl: result.data.cloudinary_url,
+            publicId: result.data.cloudinary_public_id,
+            canvasData: {
+              textElements: [], // New page starts with empty text elements
+              canvasWidth: fabricCanvas.current?.width || 800,
+              canvasHeight: fabricCanvas.current?.height || 600,
+            },
+          };
+          const updatedPages = [...pages, newPage];
+          setPages(updatedPages);
+          
+          // Switch to the new page
+          setTimeout(() => switchPage(updatedPages.length - 1), 100);
+        } else {
+          alert('Failed to upload image');
+        }
+      } catch (error) {
+        console.error('Error uploading page image:', error);
+        alert('Error uploading image');
+      } finally {
+        setIsUploadingImage(false);
+      }
+    };
+    fileInput.click();
+  };
+
+  const deletePage = (index: number) => {
+    if (pages.length <= 1) {
+      alert('Cannot delete the last page');
+      return;
+    }
+
+    const newPages = pages.filter((_, i) => i !== index);
+    setPages(newPages);
+    
+    // If deleting current page, switch to previous or first page
+    if (index === currentPageIndex) {
+      const newIndex = Math.max(0, index - 1);
+      if (newPages.length > 0) {
+        setTimeout(() => switchPage(newIndex), 100);
+      }
+    } else if (currentPageIndex >= newPages.length) {
+      setCurrentPageIndex(Math.max(0, newPages.length - 1));
+    }
+  };
+
+  const switchPage = async (index: number) => {
+    if (!fabricCanvas.current || !containerRef.current || index < 0 || index >= pages.length) return;
+
+    // Save current page canvas data before switching
+    if (pages[currentPageIndex]) {
+      const objects = fabricCanvas.current.getObjects();
+      const textElements = objects.filter(obj => obj instanceof Textbox).map((obj, i) => {
+        const textbox = obj as Textbox;
+        return {
+          id: String(i + 1),
+          text: textbox.text || '',
+          label: `Text Field ${i + 1}`,
+          left: textbox.left,
+          top: textbox.top,
+          fontSize: textbox.fontSize,
+          fontWeight: textbox.fontWeight,
+          fontFamily: textbox.fontFamily,
+          fill: textbox.fill,
+          width: textbox.width,
+          textAlign: textbox.textAlign,
+          angle: textbox.angle || 0,
+          locked: (textbox as any).isLocked || false,
+        };
+      });
+      pages[currentPageIndex].canvasData = {
+        textElements,
+        canvasWidth: fabricCanvas.current.width,
+        canvasHeight: fabricCanvas.current.height,
+      };
+    }
+
+    // Clear all objects from canvas (including text elements)
+    fabricCanvas.current.clear();
+    fabricCanvas.current.discardActiveObject();
+    setActive(null);
+
+    // Switch to new page
+    setCurrentPageIndex(index);
+    setTemplateImageUrl(pages[index].imageUrl);
+    setCloudinaryPublicId(pages[index].publicId);
+
+    // Load new page background and canvas data
+    try {
+      await loadCanvasBackgroundImage({
+        canvas: fabricCanvas.current,
+        imageUrl: pages[index].imageUrl,
+        containerWidth: containerRef.current.clientWidth,
+        containerHeight: containerRef.current.clientHeight,
+        isCancelled: () => isCanvasDisposed.current,
+        onSuccess: () => {
+          // Restore text elements for this page
+          if (pages[index].canvasData?.textElements && fabricCanvas.current) {
+            pages[index].canvasData.textElements.forEach((element: any) => {
+              const tb = new Textbox(element.text, {
+                left: element.left,
+                top: element.top,
+                fontSize: element.fontSize,
+                fontWeight: element.fontWeight,
+                fontFamily: element.fontFamily,
+                fill: element.fill,
+                width: element.width,
+                textAlign: element.textAlign,
+                angle: element.angle || 0,
+                originX: 'center',
+                originY: 'center',
+                cornerStyle: 'circle',
+                cornerColor: '#3b82f6'
+              });
+              (tb as any).isLocked = element.locked || false;
+              fabricCanvas.current?.add(tb);
+            });
+            fabricCanvas.current?.requestRenderAll();
+          }
+        },
+        onError: () => {
+          alert('Failed to load page background');
+        },
+      });
+    } catch (error) {
+      console.error('Error switching page:', error);
+      alert('Error switching page');
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-100 font-sans text-gray-900 overflow-hidden">
       {/* Canvas Area */}
@@ -340,7 +681,9 @@ export default function AdminEditor() {
           <h1 className="text-xl font-bold text-gray-800">Create Template</h1>
           <button
             onClick={() => router.push('/admin')}
-            className="text-sm text-gray-600 hover:text-gray-900"
+            aria-label="Close and return to admin panel"
+            title="Close (Esc)"
+            className="text-sm text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-2 py-1 transition"
           >
             ✕
           </button>
@@ -391,9 +734,24 @@ export default function AdminEditor() {
             </div>
           </div>
           
+          {/* Multipage Toggle */}
+          <div className="space-y-2 border-t pt-3">
+            <label className="text-xs font-semibold text-purple-700 flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isMultipage}
+                onChange={(e) => setIsMultipage(e.target.checked)}
+                className="w-4 h-4 rounded"
+              />
+              Enable Multipage Template
+            </label>
+          </div>
+
           {/* Image Upload */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-purple-700">Template Background Image</label>
+            <label className="text-xs font-semibold text-purple-700">
+              {isMultipage ? `Page ${currentPageIndex + 1} Background` : 'Template Background Image'}
+            </label>
             <input
               type="file"
               accept="image/*"
@@ -403,7 +761,7 @@ export default function AdminEditor() {
             />
             <label
               htmlFor="image-upload"
-              className="w-full h-10 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full h-10 bg-primary hover:bg-primary/90 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
             >
               {isUploadingImage ? (
                 <>
@@ -418,10 +776,68 @@ export default function AdminEditor() {
               <p className="text-xs text-purple-600 truncate">Image uploaded ✓</p>
             )}
           </div>
+
+          {/* Pages List - Only for Multipage */}
+          {isMultipage && pages.length > 0 && (
+            <div className="space-y-2 border-t pt-3">
+              <label className="text-xs font-semibold text-purple-700">Pages ({pages.length})</label>
+              <div className="space-y-1 max-h-40 overflow-y-auto bg-gray-50 p-2 rounded-lg">
+                {pages.map((page, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex items-center justify-between p-2 rounded ${
+                      currentPageIndex === idx
+                        ? 'bg-purple-200 border border-purple-400'
+                        : 'bg-white border border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    <button
+                      onClick={() => switchPage(idx)}
+                      aria-label={`Switch to page ${idx + 1}${currentPageIndex === idx ? ' (current)' : ''}`}
+                      aria-current={currentPageIndex === idx ? 'page' : undefined}
+                      className="text-sm font-semibold flex-1 text-left focus:outline-none focus:ring-1 focus:ring-blue-400 rounded px-1 py-0.5 transition"
+                    >
+                      Page {idx + 1}
+                    </button>
+                    <button
+                      onClick={() => deletePage(idx)}
+                      aria-label={`Delete page ${idx + 1}`}
+                      title="Delete page"
+                      className="text-red-500 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-400 rounded px-2 py-0.5 text-xs font-bold transition"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Add Page Button - Only for Multipage */}
+          {isMultipage && (
+            <button
+              onClick={addPage}
+              disabled={isUploadingImage}
+              aria-label="Add new page to multipage template"
+              title="Add Page (Upload background image)"
+              className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+            >
+              {isUploadingImage ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Adding Page...
+                </>
+              ) : (
+                '+ Add Page'
+              )}
+            </button>
+          )}
           <button
             onClick={saveTemplate}
             disabled={isSaving || !templateName.trim()}
-            className="w-full h-12 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2"
+            aria-label="Save template to database"
+            title="Save Template (Ctrl+S)"
+            className="w-full h-12 bg-primary hover:bg-primary/90 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600"
           >
             {isSaving ? (
               <>
@@ -436,72 +852,96 @@ export default function AdminEditor() {
 
         <button
           onClick={addText}
-          className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all transform active:scale-95"
+          aria-label="Add a new text layer to the canvas"
+          title="Add Text Layer (Ctrl+T)"
+          className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg hover:bg-primary/90 transition-all transform active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600"
         >
           + Add Text Layer
         </button>
 
         {active ? (
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Text Content</label>
-                <textarea
-                  className="w-full p-3 border rounded-lg mt-1 bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  rows={3}
-                  value={textValue}
-                  onChange={(e) => handleAttributeChange('text', e.target.value)}
-                />
-              </div>
+          <div className="space-y-4">
+            {/* Edit Header */}
+            <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+              <h2 className="text-sm font-bold text-blue-900">✏️ Edit Text</h2>
+              <p className="text-xs text-blue-600 mt-1">Modify selected text properties</p>
+            </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Size</label>
-                  <input
-                    type="number"
-                    className="w-full p-2 border rounded-lg bg-gray-50 outline-none"
-                    value={fontSize}
-                    onChange={(e) => handleAttributeChange('fontSize', parseInt(e.target.value) || 1)}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Color</label>
-                  <input
-                    type="color"
-                    className="w-full h-10 p-1 border rounded-lg cursor-pointer bg-gray-50"
-                    value={fillColor}
-                    onChange={(e) => handleAttributeChange('fill', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Style</label>
-                  <button
-                    onClick={toggleBold}
-                    className={`w-full h-10 rounded-lg text-sm font-bold transition ${
-                      bold
-                        ? 'bg-gray-800 hover:bg-gray-900 text-white'
-                        : 'bg-gray-50 hover:bg-gray-100 border text-gray-700'
-                    }`}
-                  >
-                    B
-                  </button>
-                </div>
-              </div>
+            {/* Text Content Section */}
+            <div className="bg-white p-4 rounded-xl border border-gray-200 space-y-2">
+              <label className="text-xs font-semibold text-gray-700">📝 Text Content</label>
+              <textarea
+                className="w-full p-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+                rows={3}
+                value={textValue}
+                onChange={(e) => handleAttributeChange('text', e.target.value)}
+                placeholder="Enter your text here..."
+              />
+            </div>
 
+            {/* Text Formatting Section */}
+            <div className="bg-white p-4 rounded-xl border border-gray-200 space-y-3">
+              <label className="text-xs font-semibold text-gray-700">🎨 Formatting</label>
+              
+              {/* Font Selection */}
               <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Presets</label>
+                <label className="text-xs text-gray-600 font-medium mb-1 block">Font Style</label>
                 <select
-                  className="w-full p-2 border rounded-lg mt-1 bg-white outline-none"
+                  className="w-full p-2.5 border border-gray-300 rounded-lg bg-white outline-none hover:border-blue-400 focus:ring-2 focus:ring-blue-500 text-sm font-medium"
                   value={fontFamily}
                   onChange={(e) => handleAttributeChange('fontFamily', e.target.value)}
                 >
                   {PRESET_FONTS.map(font => <option key={font} value={font}>{font}</option>)}
                 </select>
               </div>
+
+              {/* Size, Color, Bold Grid */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs text-gray-600 font-medium mb-1 block">Size</label>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="range"
+                      min="8"
+                      max="120"
+                      className="w-full"
+                      value={fontSize}
+                      onChange={(e) => handleAttributeChange('fontSize', parseInt(e.target.value) || 1)}
+                    />
+                  </div>
+                  <div className="text-xs text-center text-gray-600 mt-1 font-semibold">{fontSize}px</div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-600 font-medium mb-1 block">Color</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      className="w-full h-10 p-1 border border-gray-300 rounded-lg cursor-pointer"
+                      value={fillColor}
+                      onChange={(e) => handleAttributeChange('fill', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-600 font-medium mb-1 block">Bold</label>
+                  <button
+                    onClick={toggleBold}
+                    className={`w-full h-10 rounded-lg text-sm font-bold transition flex items-center justify-center ${
+                      bold
+                        ? 'bg-gray-900 hover:bg-gray-800 text-white shadow-md'
+                        : 'bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700'
+                    }`}
+                  >
+                    B
+                  </button>
+                </div>
+              </div>
             </div>
 
-            {/* Lock Field Section */}
-            <div className="bg-red-50 p-4 rounded-xl border border-red-100">
+            {/* Lock Section */}
+            <div className="bg-red-50 p-4 rounded-xl border border-red-200">
               <button
                 onClick={() => {
                   if (active) {
@@ -511,48 +951,53 @@ export default function AdminEditor() {
                     fabricCanvas.current?.requestRenderAll();
                   }
                 }}
-                className={`w-full h-10 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 ${
+                aria-label={`${isTextLocked ? 'Unlock' : 'Lock'} this text field`}
+                aria-pressed={isTextLocked}
+                title={`${isTextLocked ? 'Unlock' : 'Lock'} field - prevents user editing`}
+                className={`w-full h-10 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 focus:outline-none focus:ring-2 ${
                   isTextLocked
-                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-md focus:ring-red-800'
+                    : 'bg-green-500 hover:bg-green-600 text-white shadow-md focus:ring-green-700'
                 }`}
               >
-                {isTextLocked ? '🔒 Field Locked' : '🔓 Field Unlocked'}
+                {isTextLocked ? '🔒 Lock Field' : '🔓 Unlock Field'}
               </button>
-              <p className="text-xs text-gray-600 mt-2 text-center">
-                {isTextLocked ? 'Users cannot edit this field' : 'Users can edit this field'}
+              <p className="text-xs text-gray-600 text-center mt-2">
+                {isTextLocked ? 'Locked - users cannot edit' : 'Unlocked - users can edit'}
               </p>
             </div>
 
             {/* Custom Font Section */}
-            <div className="bg-indigo-50 p-5 rounded-2xl space-y-3 border border-indigo-100">
-              <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Custom Google Font</label>
+            <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-200 space-y-3">
+              <label className="text-xs font-semibold text-indigo-900 block">✨ Custom Google Font</label>
               <input
                 type="text"
-                placeholder="Google Font URL..."
-                className="w-full p-2 text-xs border border-indigo-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder="Paste Google Font URL..."
+                className="w-full p-2.5 text-xs border border-indigo-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                 value={customFontUrl}
                 onChange={(e) => setCustomFontUrl(e.target.value)}
               />
               <input
                 type="text"
-                placeholder="Font Name"
-                className="w-full p-2 text-xs border border-indigo-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder="Font family name..."
+                className="w-full p-2.5 text-xs border border-indigo-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                 value={customFontName}
                 onChange={(e) => setCustomFontName(e.target.value)}
               />
               <button
                 onClick={handleApplyCustomFont}
                 disabled={!customFontUrl || !customFontName || isLoadingFont}
-                className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white rounded-lg text-xs font-bold transition shadow-md flex items-center justify-center gap-2"
+                aria-label="Apply custom Google Font to selected text"
+                title="Apply Font (Enter)"
+                className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-indigo-800 disabled:focus:ring-gray-400"
               >
                 {isLoadingFont ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Applying...
+                    Loading...
                   </>
                 ) : (
-                  'Apply Custom Font'
+                  '➕ Apply Font'
                 )}
               </button>
             </div>

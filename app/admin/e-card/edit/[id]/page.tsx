@@ -15,6 +15,17 @@ interface TemplateData {
   name: string;
   description: string;
   template_image_url: string;
+  is_multipage?: boolean;
+  pages?: Array<{
+    imageUrl?: string;
+    cloudinaryPublicId?: string;
+    backgroundId?: number;
+    canvasData: {
+      textElements: TemplateData['canvas_data']['textElements'];
+      canvasWidth?: number;
+      canvasHeight?: number;
+    };
+  }>;
   thumbnail_uri?: string;
   canvas_data: {
     textElements: Array<{
@@ -32,6 +43,8 @@ interface TemplateData {
       angle?: number;
       locked?: boolean;
     }>;
+    canvasWidth?: number;
+    canvasHeight?: number;
     customFonts?: Array<{ name: string; url: string }>;
   };
 }
@@ -72,6 +85,10 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
   const [isLoading, setIsLoading] = useState(true);
   const [templateData, setTemplateData] = useState<TemplateData | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  // Multipage state
+  const [isMultipage, setIsMultipage] = useState(false);
+  const [pages, setPages] = useState<Array<{ imageUrl?: string; publicId?: string | null; canvasData: any }>>([]);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -105,6 +122,17 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
       const imageUrl = result.secureUrl as string;
       setTemplateImageUrl(imageUrl);
       setCloudinaryPublicId(result.publicId);
+
+      if (isMultipage && pages.length > 0) {
+        persistCurrentPage();
+        const updated = [...pages];
+        updated[currentPageIndex] = {
+          ...updated[currentPageIndex],
+          imageUrl,
+          publicId: result.publicId,
+        };
+        setPages(updated);
+      }
 
       if (fabricCanvas.current) {
         FabricImage.fromURL(imageUrl, {
@@ -167,11 +195,31 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
         const result = await response.json();
         
         if (result.success) {
-          const template = result.data;
+          const template = result.data as TemplateData & { category_id?: number; subcategory_id?: number | null; cloudinary_public_id?: string | null; thumbnail_public_id?: string | null };
           setTemplateData(template);
           setTemplateName(template.name);
           setTemplateDescription(template.description || '');
-          setTemplateImageUrl(template.template_image_url);
+
+          // Multipage initialization
+          if (template.is_multipage && template.pages && template.pages.length > 0) {
+            const normalizedPages = template.pages.map((p) => ({
+              imageUrl: p.imageUrl,
+              publicId: p.cloudinaryPublicId ?? null,
+              canvasData: {
+                textElements: p.canvasData.textElements || [],
+                canvasWidth: p.canvasData.canvasWidth,
+                canvasHeight: p.canvasData.canvasHeight,
+              },
+            }));
+            setIsMultipage(true);
+            setPages(normalizedPages);
+            setTemplateImageUrl(normalizedPages[0]?.imageUrl || template.template_image_url);
+          } else {
+            setIsMultipage(false);
+            setPages([]);
+            setTemplateImageUrl(template.template_image_url);
+          }
+
           setCloudinaryPublicId(template.cloudinary_public_id || null);
           setOldPublicId(template.cloudinary_public_id || null);
           setOldThumbnailPublicId(template.thumbnail_public_id || null);
@@ -220,6 +268,12 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current || !templateData) return;
 
+    const activePage = isMultipage && pages.length > 0 ? pages[currentPageIndex] : null;
+    const activeImageUrl = activePage?.imageUrl || templateImageUrl;
+    const activeTextElements = activePage?.canvasData?.textElements || templateData.canvas_data?.textElements || [];
+    const activeCanvasWidth = activePage?.canvasData?.canvasWidth || templateData.canvas_data?.canvasWidth;
+    const activeCanvasHeight = activePage?.canvasData?.canvasHeight || templateData.canvas_data?.canvasHeight;
+
     // Dispose existing canvas if any
     if (fabricCanvas.current) {
       fabricCanvas.current.dispose();
@@ -259,7 +313,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
       const containerWidth = containerRef.current!.clientWidth;
       const containerHeight = containerRef.current!.clientHeight;
 
-      FabricImage.fromURL(templateData.template_image_url, {
+      FabricImage.fromURL(activeImageUrl, {
         crossOrigin: 'anonymous'
       }).then((img) => {
         const canvas = fabricCanvas.current;
@@ -276,8 +330,8 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
         const finalHeight = imgHeight * scaleFactor;
 
         canvas.setDimensions({
-          width: finalWidth,
-          height: finalHeight,
+          width: activeCanvasWidth || finalWidth,
+          height: activeCanvasHeight || finalHeight,
         });
 
         canvas.backgroundImage = img;
@@ -291,8 +345,8 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
         });
 
         // Load existing text elements
-        if (templateData.canvas_data?.textElements) {
-          templateData.canvas_data.textElements.forEach((textData) => {
+        if (activeTextElements) {
+          activeTextElements.forEach((textData) => {
             const textbox = new Textbox(textData.text, {
               left: textData.left,
               top: textData.top,
@@ -346,7 +400,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
         fabricCanvas.current = null;
       }
     };
-  }, [templateData]);
+  }, [templateData, isMultipage, pages, currentPageIndex, templateImageUrl]);
 
   const handleApplyCustomFont = async () => {
     if (!active || !customFontUrl || !customFontName || !fabricCanvas.current) return;
@@ -422,11 +476,120 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
     canvas.requestRenderAll();
   };
 
+  const persistCurrentPage = () => {
+    if (!isMultipage || !fabricCanvas.current || pages.length === 0) return;
+    const objects = fabricCanvas.current.getObjects();
+    const textElements = objects.filter(obj => obj instanceof Textbox).map((obj, i) => {
+      const textbox = obj as Textbox;
+      return {
+        id: String(i + 1),
+        text: textbox.text || '',
+        label: `Text Field ${i + 1}`,
+        left: textbox.left,
+        top: textbox.top,
+        fontSize: textbox.fontSize,
+        fontFamily: textbox.fontFamily,
+        fontWeight: textbox.fontWeight,
+        fill: textbox.fill,
+        width: textbox.width,
+        textAlign: textbox.textAlign,
+        angle: textbox.angle || 0,
+        locked: (textbox as any).isLocked || false,
+      };
+    });
+    const updated = [...pages];
+    updated[currentPageIndex] = {
+      ...updated[currentPageIndex],
+      canvasData: {
+        textElements,
+        canvasWidth: fabricCanvas.current.width,
+        canvasHeight: fabricCanvas.current.height,
+      },
+    };
+    setPages(updated);
+  };
+
+  const switchPage = async (index: number) => {
+    if (!isMultipage || index === currentPageIndex || index < 0 || index >= pages.length) return;
+    if (!fabricCanvas.current || !containerRef.current) return;
+
+    persistCurrentPage();
+
+    // Clear canvas before loading
+    fabricCanvas.current.clear();
+    fabricCanvas.current.discardActiveObject();
+    setActive(null);
+
+    setCurrentPageIndex(index);
+    setTemplateImageUrl(pages[index].imageUrl || templateImageUrl);
+  };
+
+  const addPage = async () => {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        setIsUploadingImage(true);
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/uploads/background', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const result = await response.json();
+        if (!result.success) throw new Error('Failed to upload image');
+
+        persistCurrentPage();
+
+        const newPage = {
+          imageUrl: result.data.cloudinary_url as string,
+          publicId: result.data.cloudinary_public_id as string,
+          canvasData: {
+            textElements: [],
+            canvasWidth: fabricCanvas.current?.width || 800,
+            canvasHeight: fabricCanvas.current?.height || 600,
+          },
+        };
+
+        const updatedPages = [...pages, newPage];
+        setPages(updatedPages);
+        setIsMultipage(true);
+        setTimeout(() => switchPage(updatedPages.length - 1), 50);
+      } catch (error) {
+        console.error('Error adding page:', error);
+        alert('Error adding page');
+      } finally {
+        setIsUploadingImage(false);
+      }
+    };
+    fileInput.click();
+  };
+
+  const deletePage = (index: number) => {
+    if (!isMultipage || pages.length <= 1) {
+      alert('Cannot delete the last page');
+      return;
+    }
+    const newPages = pages.filter((_, i) => i !== index);
+    setPages(newPages);
+    const nextIndex = Math.max(0, Math.min(currentPageIndex, newPages.length - 1));
+    setTimeout(() => switchPage(nextIndex), 50);
+  };
+
   const updateTemplate = async () => {
     if (!fabricCanvas.current || !templateName.trim()) {
       alert('Please enter a template name');
       return;
     }
+
+    // Persist current page before saving
+    persistCurrentPage();
 
     setIsSaving(true);
     try {
@@ -452,13 +615,23 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
       const thumbnailDataURL = fabricCanvas.current.toDataURL({ format: 'png', multiplier: 0.3 });
       const thumbUpload = await uploadDataUrlToCloudinary(thumbnailDataURL, 'template-thumbnail.png');
 
+      const pagesPayload = isMultipage ? pages.map((p) => ({
+        imageUrl: p.imageUrl,
+        cloudinaryPublicId: p.publicId,
+        canvasData: p.canvasData || {
+          textElements: [],
+          canvasWidth: fabricCanvas.current?.width || 800,
+          canvasHeight: fabricCanvas.current?.height || 600,
+        },
+      })) : undefined;
+
       const response = await fetch(`/api/templates/${unwrappedParams.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: templateName,
           description: templateDescription,
-          template_image_url: templateImageUrl,
+          template_image_url: isMultipage && pages.length > 0 ? pages[0].imageUrl || templateImageUrl : templateImageUrl,
           cloudinary_public_id: cloudinaryPublicId,
           old_public_id: oldPublicId,
           thumbnail_uri: thumbUpload.secureUrl,
@@ -466,12 +639,15 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
           old_thumbnail_public_id: oldThumbnailPublicId,
           category_id: categoryId,
           subcategory_id: subcategoryId,
+          is_multipage: isMultipage,
           canvas_data: {
             textElements,
             canvasWidth: fabricCanvas.current.width,
             canvasHeight: fabricCanvas.current.height,
             customFonts: loadedCustomFonts,
+            pages: pagesPayload,
           },
+          pages: pagesPayload,
         }),
       });
 
@@ -582,10 +758,33 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
                 </select>
               </div>
             </div>
+
+          {/* Multipage Toggle */}
+          <div className="space-y-2 border-t pt-3">
+            <label className="text-xs font-semibold text-purple-700 flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isMultipage}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  setIsMultipage(enabled);
+                  if (!enabled) {
+                    setPages([]);
+                    setCurrentPageIndex(0);
+                    setTemplateImageUrl(templateData?.template_image_url || templateImageUrl);
+                  }
+                }}
+                className="w-4 h-4 rounded"
+              />
+              Enable Multipage Template
+            </label>
+          </div>
           
           {/* Image Upload */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-purple-700">Template Background Image</label>
+            <label className="text-xs font-semibold text-purple-700">
+              {isMultipage ? `Page ${currentPageIndex + 1} Background` : 'Template Background Image'}
+            </label>
             <input
               type="file"
               accept="image/*"
@@ -595,7 +794,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
             />
             <label
               htmlFor="image-upload"
-              className="w-full h-10 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full h-10 bg-primary hover:bg-primary/90 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
             >
               {isUploadingImage ? (
                 <>
@@ -610,11 +809,64 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
               <p className="text-xs text-purple-600 truncate">Image updated ✓</p>
             )}
           </div>
+
+          {/* Pages list */}
+          {isMultipage && (
+            <div className="space-y-2 border-t pt-3">
+              <label className="text-xs font-semibold text-purple-700">Pages ({pages.length || 0})</label>
+              {pages.length === 0 ? (
+                <p className="text-xs text-gray-500">Add a page to start.</p>
+              ) : (
+                <div className="space-y-1 max-h-40 overflow-y-auto bg-gray-50 p-2 rounded-lg">
+                  {pages.map((page, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex items-center justify-between p-2 rounded ${
+                        currentPageIndex === idx
+                          ? 'bg-purple-200 border border-purple-400'
+                          : 'bg-white border border-gray-200 hover:bg-gray-100'
+                      }`}
+                    >
+                      <button
+                        onClick={() => switchPage(idx)}
+                        aria-label={`Switch to page ${idx + 1}`}
+                        className="text-sm font-semibold flex-1 text-left focus:outline-none focus:ring-1 focus:ring-blue-400 rounded px-1 py-0.5 transition"
+                      >
+                        Page {idx + 1}
+                      </button>
+                      <button
+                        onClick={() => deletePage(idx)}
+                        aria-label={`Delete page ${idx + 1}`}
+                        className="text-red-500 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-400 rounded px-2 py-0.5 text-xs font-bold transition"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                onClick={addPage}
+                disabled={isUploadingImage}
+                className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2"
+              >
+                {isUploadingImage ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Adding Page...
+                  </>
+                ) : (
+                  '+ Add Page'
+                )}
+              </button>
+            </div>
+          )}
           
           <button
             onClick={updateTemplate}
             disabled={isSaving || !templateName.trim()}
-            className="w-full h-12 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2"
+            className="w-full h-12 bg-primary hover:bg-primary/90 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2"
           >
             {isSaving ? (
               <>
@@ -629,7 +881,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
 
         <button
           onClick={addText}
-          className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all transform active:scale-95"
+          className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg hover:bg-primary/90 transition-all transform active:scale-95"
         >
           + Add Text Layer
         </button>

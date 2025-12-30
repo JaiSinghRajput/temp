@@ -100,7 +100,7 @@ export default function CategoriesPage() {
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-50 to-purple-50">
       <AdminHeader
-        title="📂 Categories"
+        title="Categories"
         subtitle="Manage your e-card template categories"
         containerClass="max-w-6xl"
       />

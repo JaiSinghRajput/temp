@@ -17,7 +17,7 @@ interface AdminHeaderProps {
 }
 
 const variants: Record<NonNullable<HeaderAction['variant']>, string> = {
-  primary: 'bg-blue-600 hover:bg-blue-700 text-white',
+  primary: 'bg-primary hover:bg-primary/90 text-white',
   secondary: 'bg-gray-600 hover:bg-gray-700 text-white',
   ghost: 'text-gray-600 hover:text-gray-900',
 };

@@ -70,7 +70,7 @@ export function SubcategoryForm({
         <button
           type="submit"
           disabled={submitting || !selectedCategory}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold py-3 rounded-lg transition"
+          className="w-full bg-primary hover:bg-primary/90 disabled:bg-gray-300 text-white font-bold py-3 rounded-lg transition"
         >
           {submitting ? 'Creating...' : '+ Add Subcategory'}
         </button>

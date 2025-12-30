@@ -70,7 +70,7 @@ export default function AdminTemplatesPage() {
   return (
     <div className="min-h-screen bg-linear-to-br from-blue-50 to-purple-50">
       <AdminHeader
-        title="🎨 Manage Templates"
+        title="Manage Templates"
         subtitle="Create and manage e-card templates for your shop"
       />
 
@@ -85,7 +85,7 @@ export default function AdminTemplatesPage() {
             </p>
             <button
               onClick={handleCreateNew}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg transition"
+              className="bg-primary hover:bg-primary/90 text-white px-8 py-3 rounded-xl font-bold shadow-lg transition"
             >
               Create Template
             </button>

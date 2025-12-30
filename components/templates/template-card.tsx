@@ -59,7 +59,7 @@ export function TemplateCard({
         )}
         {badgeText && (
           <div className="absolute top-3 right-3">
-            <span className="bg-purple-600 text-white px-3 py-1 rounded-full text-xs font-bold">
+            <span className="bg-primary text-white px-3 py-1 rounded-full text-xs font-bold">
               {badgeText}
             </span>
           </div>

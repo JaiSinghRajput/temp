@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
+// Safely parse JSON fields coming from MySQL JSON columns
+const safeParseJSON = <T>(value: any, fallback: T): T => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'object') return value as T;
+  try {
+    return JSON.parse(String(value)) as T;
+  } catch (err) {
+    console.error('Failed to parse JSON field:', err);
+    return fallback;
+  }
+};
+
 // GET all templates
 export async function GET() {
   try {
@@ -13,14 +25,22 @@ export async function GET() {
        WHERE t.is_active = TRUE
        ORDER BY t.created_at DESC`
     );
-    // Map DB column thumbnail_url to API field thumbnail_uri
-    const data = rows.map((row) => ({
-      ...row,
-      thumbnail_uri: (row as any).thumbnail_url ?? null,
-      thumbnail_public_id: (row as any).thumbnail_public_id ?? null,
-      category_name: (row as any).category_name ?? null,
-      subcategory_name: (row as any).subcategory_name ?? null,
-    }));
+
+    const data = rows.map((row) => {
+      const canvasData = safeParseJSON((row as any).canvas_data, {});
+      const pages = safeParseJSON((row as any).pages, canvasData.pages || null);
+      return {
+        ...row,
+        canvas_data: canvasData,
+        pages,
+        is_multipage: (row as any).is_multipage ?? Boolean(pages),
+        thumbnail_uri: (row as any).thumbnail_url ?? null,
+        thumbnail_public_id: (row as any).thumbnail_public_id ?? null,
+        category_name: (row as any).category_name ?? null,
+        subcategory_name: (row as any).subcategory_name ?? null,
+      };
+    });
+
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching templates:', error);
@@ -35,7 +55,11 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, template_image_url, canvas_data, cloudinary_public_id, thumbnail_uri, thumbnail_public_id, category_id, subcategory_id } = body;
+    const { name, description, template_image_url, canvas_data, cloudinary_public_id, thumbnail_uri, thumbnail_public_id, category_id, subcategory_id, is_multipage } = body;
+
+    const normalizedCanvasData = canvas_data || {};
+    const pages = normalizedCanvasData.pages || null;
+    const isMultipageFlag = Boolean(is_multipage || pages);
 
     if (!name || !template_image_url || !canvas_data) {
       return NextResponse.json(
@@ -45,8 +69,20 @@ export async function POST(request: NextRequest) {
     }
 
     const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO templates (name, description, template_image_url, canvas_data, thumbnail_url, thumbnail_public_id, cloudinary_public_id, category_id, subcategory_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [name, description || null, template_image_url, JSON.stringify(canvas_data), thumbnail_uri || null, thumbnail_public_id || null, cloudinary_public_id || null, category_id || 1, subcategory_id || null]
+      'INSERT INTO templates (name, description, template_image_url, canvas_data, pages, is_multipage, thumbnail_url, thumbnail_public_id, cloudinary_public_id, category_id, subcategory_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        name,
+        description || null,
+        template_image_url,
+        JSON.stringify(normalizedCanvasData),
+        pages ? JSON.stringify(pages) : null,
+        isMultipageFlag,
+        thumbnail_uri || null,
+        thumbnail_public_id || null,
+        cloudinary_public_id || null,
+        category_id || 1,
+        subcategory_id || null,
+      ]
     );
 
     return NextResponse.json({
@@ -56,7 +92,9 @@ export async function POST(request: NextRequest) {
         name,
         description,
         template_image_url,
-        canvas_data,
+        canvas_data: normalizedCanvasData,
+        pages,
+        is_multipage: isMultipageFlag,
         thumbnail_uri: thumbnail_uri || null,
         thumbnail_public_id: thumbnail_public_id || null,
         category_id: category_id || 1,

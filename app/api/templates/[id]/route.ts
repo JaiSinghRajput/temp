@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
+const safeParseJSON = <T>(value: any, fallback: T): T => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'object') return value as T;
+  try {
+    return JSON.parse(String(value)) as T;
+  } catch (err) {
+    console.error('Failed to parse JSON field:', err);
+    return fallback;
+  }
+};
+
 // GET single template by ID
 export async function GET(
   request: NextRequest,
@@ -26,10 +37,16 @@ export async function GET(
     }
 
     const row = rows[0];
+    const canvasData = safeParseJSON((row as any).canvas_data, {});
+    const pages = safeParseJSON((row as any).pages, canvasData.pages || null);
+
     return NextResponse.json({
       success: true,
       data: {
         ...row,
+        canvas_data: canvasData,
+        pages,
+        is_multipage: (row as any).is_multipage ?? Boolean(pages),
         thumbnail_uri: (row as any).thumbnail_url ?? null,
         thumbnail_public_id: (row as any).thumbnail_public_id ?? null,
         category_name: (row as any).category_name ?? null,
@@ -53,7 +70,11 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, template_image_url, canvas_data, is_active, cloudinary_public_id, old_public_id, thumbnail_uri, thumbnail_public_id, old_thumbnail_public_id, category_id, subcategory_id } = body;
+    const { name, description, template_image_url, canvas_data, is_active, cloudinary_public_id, old_public_id, thumbnail_uri, thumbnail_public_id, old_thumbnail_public_id, category_id, subcategory_id, is_multipage } = body;
+
+    const normalizedCanvasData = canvas_data || {};
+    const pages = normalizedCanvasData.pages || body.pages || null;
+    const isMultipageFlag = is_multipage !== undefined ? Boolean(is_multipage) : Boolean(pages);
 
     // Delete old Cloudinary image if a new one is uploaded
     if (old_public_id && cloudinary_public_id && old_public_id !== cloudinary_public_id) {
@@ -78,12 +99,14 @@ export async function PUT(
     }
 
     const [result] = await pool.query<ResultSetHeader>(
-      'UPDATE templates SET name = ?, description = ?, template_image_url = ?, canvas_data = ?, thumbnail_url = ?, thumbnail_public_id = ?, is_active = ?, cloudinary_public_id = ?, category_id = ?, subcategory_id = ? WHERE id = ?',
+      'UPDATE templates SET name = ?, description = ?, template_image_url = ?, canvas_data = ?, pages = ?, is_multipage = ?, thumbnail_url = ?, thumbnail_public_id = ?, is_active = ?, cloudinary_public_id = ?, category_id = ?, subcategory_id = ? WHERE id = ?',
       [
         name,
         description || null,
         template_image_url,
-        JSON.stringify(canvas_data),
+        JSON.stringify(normalizedCanvasData),
+        pages ? JSON.stringify(pages) : null,
+        isMultipageFlag,
         thumbnail_uri || null,
         thumbnail_public_id || null,
         is_active !== undefined ? is_active : true,

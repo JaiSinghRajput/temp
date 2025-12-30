@@ -1,27 +1,54 @@
 'use client';
-import { useRouter } from 'next/navigation';
+
+import HeroSection from '@/components/Home/Hero';
+import SmoothCarousel from '@/components/ui/SmoothCarousel';
+import { useAuth } from '@/contexts/AuthContext';
+import Link from 'next/link';
 
 export default function Home() {
-  const router = useRouter();
+  const { user, loading } = useAuth();
+
+  const welcomeCards = [
+    {
+      id: 1,
+      image: "https://shop.dreamweddinghub.com/public/uploads/cards/1766640502_pCI2dP1s2p.webp",
+    },
+    {
+      id: 2,
+      image: "https://shop.dreamweddinghub.com/public/uploads/cards/1766640502_pCI2dP1s2p.webp",
+    },
+    {
+      id: 3,
+      image: "https://shop.dreamweddinghub.com/public/uploads/cards/1766640502_pCI2dP1s2p.webp",
+    },
+    {
+      id: 4,
+      image: "https://shop.dreamweddinghub.com/public/uploads/cards/1766640502_pCI2dP1s2p.webp",
+    },
+    {
+      id: 5,
+      image: "https://shop.dreamweddinghub.com/public/uploads/cards/1766640502_pCI2dP1s2p.webp",
+    },
+  ];
+
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-slate-50 to-slate-100">
+        <div className="text-center">
+          <div className="animate-spin text-4xl mb-4">⌛</div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   return (
     <>
-      <div className="p-10 text-center font-sans bg-gray-100 min-h-screen">
-        <h1 className="text-5xl text-gray-800 mb-8">Welcome to Ecard Shop</h1>
-        <div className="mt-8">
-          <p className="text-xl text-gray-600 mb-5">Navigations:</p>
-          <div className="flex justify-center gap-5 flex-wrap">
-            <div>
-              <p className="mb-2.5">Admin</p>
-              <button onClick={() => router.push('/admin')} className="px-5 py-2.5 text-base bg-blue-500 text-white border-none rounded cursor-pointer hover:bg-blue-600">Go to Admin Page</button>
-            </div>
-            <div>
-              <p className="mb-2.5">User</p>
-              <button onClick={() => router.push('/user/templates')} className="px-5 py-2.5 text-base bg-green-500 text-white border-none rounded cursor-pointer hover:bg-green-600">Go to Shop Page</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <HeroSection />
+      <SmoothCarousel items={welcomeCards} visibleItems={5} title="Best E-Card" />
     </>
   );
 }

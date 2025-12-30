@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { slug } = await params;
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, template_id, user_name, customized_data, preview_url, created_at FROM user_ecards WHERE public_slug = ?',
+      'SELECT id, template_id, user_name, customized_data, preview_url, preview_urls, created_at FROM user_ecards WHERE public_slug = ?',
       [slug]
     );
 

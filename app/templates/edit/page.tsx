@@ -216,7 +216,7 @@ export default function EditTemplate({ params }: { params: { id: string } }) {
           <p className="text-gray-600 mb-6">{error}</p>
           <button
             onClick={() => router.push('/templates')}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition"
+            className="bg-primary hover:bg-primary/90 text-white px-6 py-3 rounded-xl font-bold transition"
           >
             Back to Templates
           </button>
@@ -286,7 +286,7 @@ export default function EditTemplate({ params }: { params: { id: string } }) {
           <button
             onClick={downloadImage}
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all transform active:scale-95 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg hover:bg-primary/90 transition-all transform active:scale-95 disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             Download E-Card
           </button>
@@ -300,9 +300,9 @@ export default function EditTemplate({ params }: { params: { id: string } }) {
         </div>
 
         {/* Info Section */}
-        <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-          <h3 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-2">Note</h3>
-          <p className="text-xs text-blue-700 leading-relaxed">
+        <div className="bg-primary/10 p-4 rounded-xl border border-primary/20">
+          <h3 className="text-xs font-bold text-primary/80 uppercase tracking-wider mb-2">Note</h3>
+          <p className="text-xs text-primary/70 leading-relaxed">
             You can only edit the text content. The position, font style, size, and colors are set by the template designer.
           </p>
         </div>

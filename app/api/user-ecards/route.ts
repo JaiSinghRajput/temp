@@ -20,13 +20,13 @@ export async function GET() {
   }
 }
 
-// POST create a new user ecard (expects preview already uploaded to Cloudinary)
+// POST create a new user ecard (preview optional; supports multipage preview_urls)
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { template_id, user_name, customized_data, preview_uri } = body;
+    const { template_id, user_name, customized_data, preview_uri, preview_urls } = body;
 
-    if (!template_id || !customized_data || !preview_uri) {
+    if (!template_id || !customized_data) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
         { status: 400 }
@@ -58,9 +58,20 @@ export async function POST(request: NextRequest) {
       publicSlug = `${base}-${randomDigits(10)}`;
     }
 
+    const primaryPreview = Array.isArray(preview_urls) && preview_urls.length > 0
+      ? preview_urls[0]
+      : preview_uri || null;
+
     const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO user_ecards (template_id, user_name, customized_data, preview_url, public_slug) VALUES (?, ?, ?, ?, ?)',
-      [template_id, user_name || null, JSON.stringify(customized_data), preview_uri, publicSlug]
+      'INSERT INTO user_ecards (template_id, user_name, customized_data, preview_url, preview_urls, public_slug) VALUES (?, ?, ?, ?, ?, ?)',
+      [
+        template_id,
+        user_name || null,
+        JSON.stringify(customized_data),
+        primaryPreview,
+        preview_urls ? JSON.stringify(preview_urls) : null,
+        publicSlug,
+      ]
     );
 
     return NextResponse.json({
