@@ -55,7 +55,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, template_image_url, canvas_data, cloudinary_public_id, thumbnail_uri, thumbnail_public_id, category_id, subcategory_id, is_multipage } = body;
+    const { name, description, template_image_url, canvas_data, cloudinary_public_id, thumbnail_uri, thumbnail_public_id, category_id, subcategory_id, is_multipage, pricing_type, price } = body;
 
     const normalizedCanvasData = canvas_data || {};
     const pages = normalizedCanvasData.pages || null;
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO templates (name, description, template_image_url, canvas_data, pages, is_multipage, thumbnail_url, thumbnail_public_id, cloudinary_public_id, category_id, subcategory_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO templates (name, description, template_image_url, canvas_data, pages, is_multipage, thumbnail_url, thumbnail_public_id, cloudinary_public_id, category_id, subcategory_id, pricing_type, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         name,
         description || null,
@@ -82,6 +82,8 @@ export async function POST(request: NextRequest) {
         cloudinary_public_id || null,
         category_id || 1,
         subcategory_id || null,
+        pricing_type || 'free',
+        pricing_type === 'premium' ? parseFloat(price) || 0 : 0,
       ]
     );
 

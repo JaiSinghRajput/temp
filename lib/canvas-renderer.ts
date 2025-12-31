@@ -11,6 +11,7 @@ export interface LoadCanvasOptions {
   scale: number;
   onTextSelect?: (id: string) => void;
   customFonts?: Array<{ name: string; url: string }>;
+  isCancelled?: () => boolean;
 }
 
 /**
@@ -75,6 +76,7 @@ export async function loadCanvasPage({
   canvasHeight,
   scale,
   onTextSelect,
+  isCancelled,
 }: LoadCanvasOptions): Promise<{
   backgroundImage: FabricImage;
   textObjects: Map<string, Textbox>;
@@ -84,8 +86,18 @@ export async function loadCanvasPage({
   // Resolve background URL
   console.log('loadCanvasPage called with:', { imageUrl, backgroundId, textElementsCount: textElements.length });
   const resolvedUrl = await resolveBackgroundUrl(imageUrl, backgroundId);
+  
+  if (isCancelled?.()) {
+    throw new Error('Operation cancelled');
+  }
+  
   console.log('Background resolved to:', resolvedUrl);
   const img = await FabricImage.fromURL(resolvedUrl, { crossOrigin: 'anonymous' });
+  
+  if (isCancelled?.()) {
+    throw new Error('Operation cancelled');
+  }
+  
   console.log('Image loaded from Fabric:', { width: img.width, height: img.height });
   
   const imgWidth = img.width;
@@ -103,9 +115,9 @@ export async function loadCanvasPage({
   const designToImageScaleY = imgHeight / baseDesignHeight;
   const designToImageScale = Math.min(designToImageScaleX, designToImageScaleY);
 
-  // Guard against disposed canvas
-  if (!(canvas as any).lowerCanvasEl || !(canvas as any).upperCanvasEl) {
-    throw new Error('Canvas disposed');
+  // Check if operation was cancelled
+  if (isCancelled?.()) {
+    throw new Error('Operation cancelled');
   }
 
   canvas.setDimensions({
@@ -131,6 +143,8 @@ export async function loadCanvasPage({
     const baseTop = data.top * designToImageScaleY;
     const baseFontSize = data.fontSize * designToImageScale;
     const baseWidth = data.width ? data.width * designToImageScaleX : undefined;
+    const baseScaleX = data.scaleX ?? 1;
+    const baseScaleY = data.scaleY ?? 1;
 
     originalTextData.set(data.id, {
       left: baseLeft,
@@ -149,6 +163,8 @@ export async function loadCanvasPage({
       width: baseWidth ? baseWidth * scale : undefined,
       textAlign: data.textAlign as any,
       angle: data.angle || 0,
+      scaleX: baseScaleX,
+      scaleY: baseScaleY,
       lockMovementX: true,
       lockMovementY: true,
       lockScalingX: true,

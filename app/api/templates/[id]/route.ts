@@ -70,7 +70,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, template_image_url, canvas_data, is_active, cloudinary_public_id, old_public_id, thumbnail_uri, thumbnail_public_id, old_thumbnail_public_id, category_id, subcategory_id, is_multipage } = body;
+    const { name, description, template_image_url, canvas_data, is_active, cloudinary_public_id, old_public_id, thumbnail_uri, thumbnail_public_id, old_thumbnail_public_id, category_id, subcategory_id, is_multipage, pricing_type, price } = body;
 
     const normalizedCanvasData = canvas_data || {};
     const pages = normalizedCanvasData.pages || body.pages || null;
@@ -99,7 +99,7 @@ export async function PUT(
     }
 
     const [result] = await pool.query<ResultSetHeader>(
-      'UPDATE templates SET name = ?, description = ?, template_image_url = ?, canvas_data = ?, pages = ?, is_multipage = ?, thumbnail_url = ?, thumbnail_public_id = ?, is_active = ?, cloudinary_public_id = ?, category_id = ?, subcategory_id = ? WHERE id = ?',
+      'UPDATE templates SET name = ?, description = ?, template_image_url = ?, canvas_data = ?, pages = ?, is_multipage = ?, thumbnail_url = ?, thumbnail_public_id = ?, is_active = ?, cloudinary_public_id = ?, category_id = ?, subcategory_id = ?, pricing_type = ?, price = ? WHERE id = ?',
       [
         name,
         description || null,
@@ -113,6 +113,8 @@ export async function PUT(
         cloudinary_public_id || null,
         category_id || 1,
         subcategory_id || null,
+        pricing_type || 'free',
+        pricing_type === 'premium' ? parseFloat(price) || 0 : 0,
         id,
       ]
     );

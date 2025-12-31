@@ -21,6 +21,7 @@ import {
   ExpandMore,
   Home as HomeIcon,
   Logout as LogoutIcon,
+  TextFields as FontsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -54,6 +55,11 @@ export function AdminSidebar() {
           { name: 'Subcategories', href: '/admin/subcategories' },
         ],
       },
+      {
+        key: 'fonts',
+        title: 'Fonts',
+        items: [{ name: 'Font CDN Links', href: '/admin/fonts' }],
+      },
     ],
     []
   );
@@ -74,6 +80,8 @@ export function AdminSidebar() {
         return <TemplatesIcon />;
       case 'categories':
         return <CategoriesIcon />;
+      case 'fonts':
+        return <FontsIcon />;
       default:
         return null;
     }

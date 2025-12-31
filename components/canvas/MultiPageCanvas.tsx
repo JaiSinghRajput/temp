@@ -33,9 +33,17 @@ export function MultiPageCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const fabricCanvas = useRef<Canvas | null>(null);
   const textObjects = useRef<Map<string, any>>(new Map());
+  const isInitializing = useRef(false);
+  const currentPageIndexRef = useRef(currentPageIndex);
+  const lastLoadedPage = useRef<{ pageIndex: number; imageUrl?: string; backgroundId?: number } | null>(null);
 
   const currentPage = pages?.[currentPageIndex];
   const hasMultiplePages = pages?.length > 1;
+
+  // Update ref when page changes
+  useEffect(() => {
+    currentPageIndexRef.current = currentPageIndex;
+  }, [currentPageIndex]);
 
   // Clamp page index if needed
   useEffect(() => {
@@ -47,8 +55,18 @@ export function MultiPageCanvas({
   // Load and render canvas
   useEffect(() => {
     if (!pages?.length || !currentPage) return;
+    if (isInitializing.current) return;
+
+    // Check if we need to reload (page changed or background changed)
+    const needsReload = !lastLoadedPage.current ||
+      lastLoadedPage.current.pageIndex !== currentPageIndex ||
+      lastLoadedPage.current.imageUrl !== currentPage.imageUrl ||
+      lastLoadedPage.current.backgroundId !== currentPage.backgroundId;
+
+    if (!needsReload) return;
 
     let isMounted = true;
+    isInitializing.current = true;
 
     const initCanvas = async () => {
       // Wait for DOM elements
@@ -58,7 +76,10 @@ export function MultiPageCanvas({
         retries++;
       }
 
-      if (!isMounted || !canvasRef.current || !containerRef.current) return;
+      if (!isMounted || !canvasRef.current || !containerRef.current) {
+        isInitializing.current = false;
+        return;
+      }
 
       // Dispose old canvas
       if (fabricCanvas.current) {
@@ -74,7 +95,10 @@ export function MultiPageCanvas({
         // Load fonts
         await loadCustomFonts(customFonts);
 
-        if (!isMounted) return;
+        if (!isMounted) {
+          isInitializing.current = false;
+          return;
+        }
 
         // Create canvas
         const canvas = new Canvas(canvasRef.current, {
@@ -99,9 +123,13 @@ export function MultiPageCanvas({
           canvasHeight: currentPage.canvasHeight,
           scale: 1,
           onTextSelect: (id) => isMounted && setSelectedTextId(id),
+          isCancelled: () => !isMounted,
         });
 
-        if (!isMounted) return;
+        if (!isMounted) {
+          isInitializing.current = false;
+          return;
+        }
 
         // Calculate responsive scale
         const scale = Math.min(
@@ -134,8 +162,17 @@ export function MultiPageCanvas({
 
         textObjects.current = result.textObjects;
         canvas.requestRenderAll();
+
+        // Mark this page as loaded
+        lastLoadedPage.current = {
+          pageIndex: currentPageIndex,
+          imageUrl: currentPage.imageUrl,
+          backgroundId: currentPage.backgroundId,
+        };
       } catch (err) {
         console.error('Canvas load error:', err);
+      } finally {
+        isInitializing.current = false;
       }
     };
 
@@ -143,7 +180,25 @@ export function MultiPageCanvas({
     return () => {
       isMounted = false;
     };
-  }, [currentPageIndex, pages?.length, customFonts]);
+  }, [currentPageIndex]);
+
+  // Update text on canvas when pages data changes (without re-initializing)
+  useEffect(() => {
+    if (!fabricCanvas.current || !currentPage?.textElements || isInitializing.current) return;
+
+    let hasChanges = false;
+    currentPage.textElements.forEach((element) => {
+      const textbox = textObjects.current.get(element.id);
+      if (textbox && textbox.text !== element.text) {
+        textbox.set('text', element.text);
+        hasChanges = true;
+      }
+    });
+
+    if (hasChanges) {
+      fabricCanvas.current.requestRenderAll();
+    }
+  }, [currentPage?.textElements]);
 
   const goToPage = (index: number) => {
     if (index >= 0 && index < pages.length) {
@@ -165,7 +220,7 @@ export function MultiPageCanvas({
   if (!pages?.length) {
     return (
       <div className={`flex flex-col ${className}`}>
-        <div className="flex-1 flex justify-center items-center bg-gradient-to-br from-blue-50 to-purple-50">
+        <div className="flex-1 flex justify-center items-center bg-linear-to-br from-blue-50 to-purple-50">
           <p className="text-red-600 font-semibold">No pages available</p>
         </div>
       </div>
@@ -177,7 +232,7 @@ export function MultiPageCanvas({
       {/* Canvas */}
       <div
         ref={containerRef}
-        className="flex-1 flex justify-center items-center bg-gradient-to-br from-blue-50 to-purple-50 overflow-auto p-4 min-h-[40vh]"
+        className="flex-1 flex justify-center items-center bg-linear-to-br from-blue-50 to-purple-50 overflow-auto p-4 min-h-[40vh]"
       >
         <div className="shadow-2xl rounded-lg overflow-hidden border border-gray-200 bg-white">
           <canvas ref={canvasRef} />

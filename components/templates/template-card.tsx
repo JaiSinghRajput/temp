@@ -92,6 +92,15 @@ export function TemplateCard({
           </p>
         )}
 
+        {/* Pricing Badge */}
+        {(template as any).pricing_type === 'premium' && (
+          <div className="mb-3 inline-block bg-yellow-50 border border-yellow-200 rounded-lg px-2 py-1">
+            <span className="text-sm font-semibold text-yellow-800">
+              ${((template as any).price || 0).toFixed(2)}
+            </span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-400">
             {created ? `Created ${created}` : 'Created date unknown'}

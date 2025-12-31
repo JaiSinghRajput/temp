@@ -147,4 +147,13 @@ CREATE TABLE `card_subcategories` (
   FOREIGN KEY (`category_id`) REFERENCES `card_categories`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+CREATE TABLE IF NOT EXISTS FONT_CDN_LINKS (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  font_name VARCHAR(255) NOT NULL UNIQUE,
+  cdn_link TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_font_name (font_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SELECT 'Database setup completed successfully!' as Status;

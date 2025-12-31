@@ -4,7 +4,7 @@ export interface CustomFont {
 }
 
 /**
- * Load custom Google Font into the document
+ * Load custom  Font into the document
  */
 export async function loadCustomFont(font: CustomFont): Promise<void> {
   const id = `font-${font.name.replace(/\s+/g, '-').toLowerCase()}`;

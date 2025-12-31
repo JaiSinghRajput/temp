@@ -1,9 +1,6 @@
 "use client";
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { SubcategoryForm } from '@/components/admin/subcategory-form';
-import { SubcategoryList } from '@/components/admin/subcategory-list';
-import { AdminHeader } from '@/components/admin/admin-header';
+
+import { useEffect, useState } from "react";
 
 interface Category {
   id: number;
@@ -18,148 +15,193 @@ interface Subcategory {
 }
 
 export default function SubcategoriesPage() {
-  const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [subcategoryName, setSubcategoryName] = useState('');
-  const [subcategorySlug, setSubcategorySlug] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const init = async () => {
-      await fetchCategories();
-      setLoading(false);
-    };
     init();
   }, []);
 
-  const fetchCategories = async () => {
-    try {
-      const res = await fetch('/api/categories');
-      const json = await res.json();
-      if (json.success) {
-        setCategories(json.data);
-        if (json.data.length > 0) {
-          const firstId = json.data[0].id;
-          setSelectedCategory(firstId);
-          await fetchSubcategories(firstId);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load categories', e);
+  const init = async () => {
+    const res = await fetch("/api/categories");
+    const json = await res.json();
+
+    if (json.success && json.data.length) {
+      setCategories(json.data);
+      setSelectedCategory(json.data[0].id);
+      await fetchSubcategories(json.data[0].id);
     }
+    setLoading(false);
   };
 
   const fetchSubcategories = async (categoryId: number) => {
-    try {
-      const res = await fetch(`/api/subcategories?category_id=${categoryId}`);
-      const json = await res.json();
-      if (json.success) setSubcategories(json.data);
-    } catch (e) {
-      console.error('Failed to load subcategories', e);
-    }
+    const res = await fetch(`/api/subcategories?category_id=${categoryId}`);
+    const json = await res.json();
+    if (json.success) setSubcategories(json.data);
   };
 
-  const handleAddSubcategory = async (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCategory || !subcategoryName.trim()) return;
+    if (!selectedCategory || !name.trim()) return;
 
-    setIsSubmitting(true);
-    try {
-      const res = await fetch('/api/subcategories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category_id: selectedCategory,
-          name: subcategoryName.trim(),
-          slug: subcategorySlug.trim() || undefined,
-        }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setSubcategoryName('');
-        setSubcategorySlug('');
-        alert('Subcategory created successfully!');
-        await fetchSubcategories(selectedCategory);
-      } else {
-        alert('Error: ' + (json.error || 'Failed to create subcategory'));
-      }
-    } catch (e) {
-      console.error('Error creating subcategory', e);
-      alert('Failed to create subcategory');
-    } finally {
-      setIsSubmitting(false);
+    setSubmitting(true);
+    const res = await fetch("/api/subcategories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category_id: selectedCategory,
+        name: name.trim(),
+        slug: slug.trim() || undefined,
+      }),
+    });
+
+    const json = await res.json();
+    if (json.success) {
+      setName("");
+      setSlug("");
+      setShowModal(false);
+      fetchSubcategories(selectedCategory);
+    } else {
+      alert(json.error || "Failed to add subcategory");
+    }
+    setSubmitting(false);
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Delete this subcategory?")) return;
+    const res = await fetch(`/api/subcategories/${id}`, { method: "DELETE" });
+    const json = await res.json();
+    if (json.success && selectedCategory) {
+      fetchSubcategories(selectedCategory);
     }
   };
 
-  const handleDeleteSubcategory = async (id: number) => {
-    if (!confirm('Delete this subcategory?')) return;
-
-    try {
-      const res = await fetch(`/api/subcategories/${id}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (json.success) {
-        alert('Subcategory deleted successfully');
-        if (selectedCategory) await fetchSubcategories(selectedCategory);
-      } else {
-        alert('Error: ' + (json.error || 'Failed to delete subcategory'));
-      }
-    } catch (e) {
-      console.error('Error deleting subcategory', e);
-      alert('Failed to delete subcategory');
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-purple-50">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 font-semibold">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <p className="p-6">Loading...</p>;
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-blue-50 to-purple-50">
-      <AdminHeader
-        title="Subcategories"
-        subtitle="Manage subcategories by category"
-        containerClass="max-w-6xl"
-        actions={[
-          { label: '← Dashboard', href: '/admin', variant: 'ghost' },
-          { label: 'Categories', href: '/admin/categories', variant: 'ghost' },
-        ]}
-      />
+    <div className="max-w-5xl mx-auto p-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-semibold">Subcategories</h1>
 
-      <div className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <SubcategoryForm
-          categories={categories}
-          selectedCategory={selectedCategory}
-          name={subcategoryName}
-          slug={subcategorySlug}
-          submitting={isSubmitting}
-          onCategoryChange={async (id) => {
-            setSelectedCategory(id);
-            await fetchSubcategories(id);
-          }}
-          onNameChange={setSubcategoryName}
-          onSlugChange={setSubcategorySlug}
-          onSubmit={handleAddSubcategory}
-        />
+        <div className="flex gap-2">
+          <select
+            value={selectedCategory ?? ""}
+            onChange={(e) => {
+              const id = Number(e.target.value);
+              setSelectedCategory(id);
+              fetchSubcategories(id);
+            }}
+            className="border px-3 py-2 rounded"
+          >
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
 
-        <div className="lg:col-span-2">
-          <SubcategoryList
-            subcategories={subcategories}
-            categoryName={selectedCategory ? categories.find((c) => c.id === selectedCategory)?.name : undefined}
-            onDelete={handleDeleteSubcategory}
-          />
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-4 py-2 bg-black text-white rounded"
+          >
+            Add Subcategory
+          </button>
         </div>
       </div>
+
+      {/* Table */}
+      <div className="border rounded">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="text-left p-3">Name</th>
+              <th className="text-left p-3">Slug</th>
+              <th className="p-3 text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {subcategories.length === 0 && (
+              <tr>
+                <td colSpan={3} className="p-4 text-center text-gray-500">
+                  No subcategories found
+                </td>
+              </tr>
+            )}
+
+            {subcategories.map((s) => (
+              <tr key={s.id} className="border-t">
+                <td className="p-3">{s.name}</td>
+                <td className="p-3 text-gray-600">{s.slug}</td>
+                <td className="p-3 text-center">
+                  <button
+                    onClick={() => handleDelete(s.id)}
+                    className="text-red-600 hover:underline"
+                  >
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white w-full max-w-md rounded shadow p-6">
+            <h2 className="text-lg font-semibold mb-4">
+              Add Subcategory
+            </h2>
+
+            <form onSubmit={handleAdd} className="space-y-4">
+              <div>
+                <label className="block text-sm mb-1">Name</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full border px-3 py-2 rounded"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm mb-1">Slug</label>
+                <input
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  className="w-full border px-3 py-2 rounded"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 border rounded"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 bg-black text-white rounded"
+                >
+                  {submitting ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

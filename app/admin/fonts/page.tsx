@@ -2,72 +2,65 @@
 
 import { useEffect, useState } from "react";
 
-interface Category {
+interface FontCdnLink {
   id: number;
-  name: string;
-  description?: string | null;
-  status: number;
-  created_at: string;
+  font_name: string;
+  cdn_link: string;
 }
 
-export default function CategoriesPage() {
-  const [categories, setCategories] = useState<Category[]>([]);
+export default function FontsPage() {
+  const [fonts, setFonts] = useState<FontCdnLink[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [showModal, setShowModal] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [fontName, setFontName] = useState("");
+  const [cdnLink, setCdnLink] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchCategories();
+    fetchFonts();
   }, []);
 
-  const fetchCategories = async () => {
-    try {
-      const res = await fetch("/api/categories");
-      const json = await res.json();
-      if (json.success) setCategories(json.data);
-    } finally {
-      setLoading(false);
-    }
+  const fetchFonts = async () => {
+    const res = await fetch("/api/font-cdn-links");
+    const json = await res.json();
+    if (json.success) setFonts(json.data);
+    setLoading(false);
   };
 
-  const handleAddCategory = async (e: React.FormEvent) => {
+  const handleAddFont = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!fontName.trim() || !cdnLink.trim()) return;
 
     setSubmitting(true);
-    try {
-      const res = await fetch("/api/categories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || null,
-        }),
-      });
+    const res = await fetch("/api/font-cdn-links", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        font_name: fontName.trim(),
+        cdn_link: cdnLink.trim(),
+      }),
+    });
 
-      const json = await res.json();
-      if (json.success) {
-        setName("");
-        setDescription("");
-        setShowModal(false);
-        fetchCategories();
-      } else {
-        alert(json.error || "Failed to create category");
-      }
-    } finally {
-      setSubmitting(false);
+    const json = await res.json();
+    if (json.success) {
+      setFontName("");
+      setCdnLink("");
+      setShowModal(false);
+      fetchFonts();
+    } else {
+      alert(json.error || "Failed to save font");
     }
+    setSubmitting(false);
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this category?")) return;
-
-    const res = await fetch(`/api/categories/${id}`, { method: "DELETE" });
+    if (!confirm("Delete this font CDN link?")) return;
+    const res = await fetch(`/api/font-cdn-links/${id}`, {
+      method: "DELETE",
+    });
     const json = await res.json();
-    if (json.success) fetchCategories();
+    if (json.success) fetchFonts();
   };
 
   if (loading) return <p className="p-6">Loading...</p>;
@@ -76,12 +69,13 @@ export default function CategoriesPage() {
     <div className="max-w-5xl mx-auto p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-semibold">Categories</h1>
+        <h1 className="text-2xl font-semibold">Fonts</h1>
+
         <button
           onClick={() => setShowModal(true)}
-          className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800"
+          className="px-4 py-2 bg-black text-white rounded"
         >
-          Add Category
+          Add Font
         </button>
       </div>
 
@@ -90,29 +84,29 @@ export default function CategoriesPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-100">
             <tr>
-              <th className="text-left p-3">Name</th>
-              <th className="text-left p-3">Description</th>
+              <th className="text-left p-3">Font Name</th>
+              <th className="text-left p-3">CDN Link</th>
               <th className="p-3 text-center">Action</th>
             </tr>
           </thead>
           <tbody>
-            {categories.length === 0 && (
+            {fonts.length === 0 && (
               <tr>
                 <td colSpan={3} className="p-4 text-center text-gray-500">
-                  No categories found
+                  No fonts found
                 </td>
               </tr>
             )}
 
-            {categories.map((cat) => (
-              <tr key={cat.id} className="border-t">
-                <td className="p-3">{cat.name}</td>
-                <td className="p-3 text-gray-600">
-                  {cat.description || "-"}
+            {fonts.map((font) => (
+              <tr key={font.id} className="border-t">
+                <td className="p-3">{font.font_name}</td>
+                <td className="p-3 text-gray-600 break-all">
+                  {font.cdn_link}
                 </td>
                 <td className="p-3 text-center">
                   <button
-                    onClick={() => handleDelete(cat.id)}
+                    onClick={() => handleDelete(font.id)}
                     className="text-red-600 hover:underline"
                   >
                     Delete
@@ -128,28 +122,26 @@ export default function CategoriesPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white w-full max-w-md rounded shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">
-              Add Category
-            </h2>
+            <h2 className="text-lg font-semibold mb-4">Add Font</h2>
 
-            <form onSubmit={handleAddCategory} className="space-y-4">
+            <form onSubmit={handleAddFont} className="space-y-4">
               <div>
-                <label className="block text-sm mb-1">Name</label>
+                <label className="block text-sm mb-1">Font Name</label>
                 <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={fontName}
+                  onChange={(e) => setFontName(e.target.value)}
                   className="w-full border px-3 py-2 rounded"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm mb-1">Description</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                <label className="block text-sm mb-1">CDN Link</label>
+                <input
+                  value={cdnLink}
+                  onChange={(e) => setCdnLink(e.target.value)}
                   className="w-full border px-3 py-2 rounded"
-                  rows={3}
+                  required
                 />
               </div>
 

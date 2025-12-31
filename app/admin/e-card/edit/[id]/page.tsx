@@ -64,6 +64,10 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
   const [fontFamily, setFontFamily] = useState('Arial');
   const [isTextLocked, setIsTextLocked] = useState(false);
 
+  // Font search states
+  const [fontSearchQuery, setFontSearchQuery] = useState('');
+  const [showFontSuggestions, setShowFontSuggestions] = useState(false);
+
   // Custom Font States
   const [customFontUrl, setCustomFontUrl] = useState('');
   const [customFontName, setCustomFontName] = useState('');
@@ -85,6 +89,11 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
   const [isLoading, setIsLoading] = useState(true);
   const [templateData, setTemplateData] = useState<TemplateData | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  // Pricing States
+  const [pricingType, setPricingType] = useState<'free' | 'premium'>('free');
+  const [price, setPrice] = useState('');
+
   // Multipage state
   const [isMultipage, setIsMultipage] = useState(false);
   const [pages, setPages] = useState<Array<{ imageUrl?: string; publicId?: string | null; canvasData: any }>>([]);
@@ -193,7 +202,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
       try {
         const response = await fetch(`/api/templates/${unwrappedParams.id}`);
         const result = await response.json();
-        
+
         if (result.success) {
           const template = result.data as TemplateData & { category_id?: number; subcategory_id?: number | null; cloudinary_public_id?: string | null; thumbnail_public_id?: string | null };
           setTemplateData(template);
@@ -225,6 +234,10 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
           setOldThumbnailPublicId(template.thumbnail_public_id || null);
           setCategoryId(template.category_id || 1);
           setSubcategoryId(template.subcategory_id || null);
+
+          // Load pricing data
+          setPricingType((template as any).pricing_type || 'free');
+          setPrice(((template as any).price || 0).toString());
         }
       } catch (error) {
         console.error('Error loading template:', error);
@@ -248,6 +261,55 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
       }
     };
     loadCategories();
+  }, []);
+
+  // Load managed fonts from database
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadManagedFonts = async () => {
+      try {
+        const res = await fetch('/api/font-cdn-links');
+        const json = await res.json();
+        if (!json.success || !Array.isArray(json.data)) return;
+        const fonts: Array<{ name: string; url: string }> = json.data.map((f: any) => ({ name: f.font_name, url: f.cdn_link }));
+
+        for (const font of fonts) {
+          const id = `font-${font.name.replace(/\s+/g, '-').toLowerCase()}`;
+          if (!document.getElementById(id)) {
+            const link = document.createElement('link');
+            link.id = id;
+            link.rel = 'stylesheet';
+            link.href = font.url;
+            document.head.appendChild(link);
+          }
+          try {
+            await document.fonts.load(`16px "${font.name}"`);
+          } catch (err) {
+            console.error(`Failed to load managed font ${font.name}:`, err);
+          }
+        }
+
+        if (!cancelled) {
+          setLoadedCustomFonts((prev) => {
+            const merged = [...prev];
+            fonts.forEach((f) => {
+              if (!merged.find((item) => item.name === f.name)) {
+                merged.push(f);
+              }
+            });
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load managed fonts', err);
+      }
+    };
+
+    loadManagedFonts();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load subcategories when category changes
@@ -283,7 +345,15 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
     // Load custom fonts if any
     const loadCustomFonts = async () => {
       if (templateData.canvas_data?.customFonts) {
-        setLoadedCustomFonts(templateData.canvas_data.customFonts);
+        setLoadedCustomFonts((prev) => {
+          const merged = [...prev];
+          templateData.canvas_data!.customFonts!.forEach((f) => {
+            if (!merged.find((item) => item.name === f.name)) {
+              merged.push(f);
+            }
+          });
+          return merged;
+        });
         for (const font of templateData.canvas_data.customFonts) {
           const id = `font-${font.name.replace(/\s+/g, '-').toLowerCase()}`;
           if (!document.getElementById(id)) {
@@ -292,7 +362,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
             link.rel = 'stylesheet';
             link.href = font.url;
             document.head.appendChild(link);
-            
+
             try {
               await document.fonts.load(`16px "${font.name}"`);
             } catch (err) {
@@ -346,7 +416,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
 
         // Load existing text elements
         if (activeTextElements) {
-          activeTextElements.forEach((textData) => {
+          activeTextElements.forEach((textData:any) => {
             const textbox = new Textbox(textData.text, {
               left: textData.left,
               top: textData.top,
@@ -388,7 +458,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
       canvas.on('selection:created', syncSidebar);
       canvas.on('selection:updated', syncSidebar);
       canvas.on('selection:cleared', () => setActive(null));
-      
+
       canvas.on('text:changed', (e: any) => {
         if (e.target instanceof Textbox) setTextValue(e.target.text || '');
       });
@@ -588,9 +658,6 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
       return;
     }
 
-    // Persist current page before saving
-    persistCurrentPage();
-
     setIsSaving(true);
     try {
       const objects = fabricCanvas.current.getObjects();
@@ -615,15 +682,31 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
       const thumbnailDataURL = fabricCanvas.current.toDataURL({ format: 'png', multiplier: 0.3 });
       const thumbUpload = await uploadDataUrlToCloudinary(thumbnailDataURL, 'template-thumbnail.png');
 
-      const pagesPayload = isMultipage ? pages.map((p) => ({
-        imageUrl: p.imageUrl,
-        cloudinaryPublicId: p.publicId,
-        canvasData: p.canvasData || {
-          textElements: [],
-          canvasWidth: fabricCanvas.current?.width || 800,
-          canvasHeight: fabricCanvas.current?.height || 600,
-        },
-      })) : undefined;
+      // For multipage, we need to get the current canvas data and merge with existing pages
+      const pagesPayload = isMultipage ? pages.map((p, idx) => {
+        // If this is the current page, use the current canvas data
+        if (idx === currentPageIndex) {
+          return {
+            imageUrl: p.imageUrl,
+            cloudinaryPublicId: p.publicId,
+            canvasData: {
+              textElements,
+              canvasWidth: fabricCanvas.current?.width || 800,
+              canvasHeight: fabricCanvas.current?.height || 600,
+            },
+          };
+        }
+        // Otherwise, use the stored data
+        return {
+          imageUrl: p.imageUrl,
+          cloudinaryPublicId: p.publicId,
+          canvasData: p.canvasData || {
+            textElements: [],
+            canvasWidth: fabricCanvas.current?.width || 800,
+            canvasHeight: fabricCanvas.current?.height || 600,
+          },
+        };
+      }) : undefined;
 
       const response = await fetch(`/api/templates/${unwrappedParams.id}`, {
         method: 'PUT',
@@ -640,6 +723,8 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
           category_id: categoryId,
           subcategory_id: subcategoryId,
           is_multipage: isMultipage,
+          pricing_type: pricingType,
+          price: pricingType === 'premium' ? parseFloat(price) || 0 : 0,
           canvas_data: {
             textElements,
             canvasWidth: fabricCanvas.current.width,
@@ -707,12 +792,12 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
           <div>
             <h1 className="text-xl font-bold text-gray-800">Edit Template</h1>
           </div>
-            <button
-              onClick={() => router.push('/admin/e-card')}
-              className="text-xl text-gray-600 hover:text-gray-900"
-            >
-              ✕
-            </button>
+          <button
+            onClick={() => router.push('/admin/e-card')}
+            className="text-xl text-gray-600 hover:text-gray-900"
+          >
+            ✕
+          </button>
         </div>
 
         <div className="bg-purple-50 p-4 rounded-xl space-y-3 border border-purple-100">
@@ -731,33 +816,77 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
             value={templateDescription}
             onChange={(e) => setTemplateDescription(e.target.value)}
           />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Category</label>
-                <select
-                  className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 bg-white"
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(parseInt(e.target.value, 10) || 1)}
-                >
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Subcategory</label>
-                <select
-                  className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 bg-white"
-                  value={subcategoryId ?? ''}
-                  onChange={(e) => setSubcategoryId(e.target.value ? parseInt(e.target.value, 10) : null)}
-                >
-                  <option value="">None</option>
-                  {subcategories.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Category</label>
+              <select
+                className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                value={categoryId}
+                onChange={(e) => setCategoryId(parseInt(e.target.value, 10) || 1)}
+              >
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
             </div>
+            <div>
+              <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Subcategory</label>
+              <select
+                className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                value={subcategoryId ?? ''}
+                onChange={(e) => setSubcategoryId(e.target.value ? parseInt(e.target.value, 10) : null)}
+              >
+                <option value="">None</option>
+                {subcategories.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Pricing Section */}
+          <div className="border-t pt-3 space-y-3">
+            <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Pricing</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="pricing"
+                  value="free"
+                  checked={pricingType === 'free'}
+                  onChange={(e) => setPricingType(e.target.value as 'free' | 'premium')}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Free</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="pricing"
+                  value="premium"
+                  checked={pricingType === 'premium'}
+                  onChange={(e) => setPricingType(e.target.value as 'free' | 'premium')}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Premium</span>
+              </label>
+            </div>
+
+            {pricingType === 'premium' && (
+              <div>
+                <label className="text-xs font-semibold text-purple-700 block mb-1">Price ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Enter price"
+                  className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
 
           {/* Multipage Toggle */}
           <div className="space-y-2 border-t pt-3">
@@ -779,7 +908,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
               Enable Multipage Template
             </label>
           </div>
-          
+
           {/* Image Upload */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-purple-700">
@@ -821,11 +950,10 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
                   {pages.map((page, idx) => (
                     <div
                       key={idx}
-                      className={`flex items-center justify-between p-2 rounded ${
-                        currentPageIndex === idx
+                      className={`flex items-center justify-between p-2 rounded ${currentPageIndex === idx
                           ? 'bg-purple-200 border border-purple-400'
                           : 'bg-white border border-gray-200 hover:bg-gray-100'
-                      }`}
+                        }`}
                     >
                       <button
                         onClick={() => switchPage(idx)}
@@ -862,7 +990,7 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
               </button>
             </div>
           )}
-          
+
           <button
             onClick={updateTemplate}
             disabled={isSaving || !templateName.trim()}
@@ -920,15 +1048,116 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
                 </div>
               </div>
 
+              <div className="relative">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Font Style</label>
+                <input
+                  type="text"
+                  value={fontSearchQuery || fontFamily}
+                  onChange={(e) => {
+                    setFontSearchQuery(e.target.value);
+                    setShowFontSuggestions(true);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && fontSearchQuery.trim()) {
+                      e.preventDefault();
+                      handleAttributeChange('fontFamily', fontSearchQuery.trim());
+                      setFontSearchQuery('');
+                      setShowFontSuggestions(false);
+                    }
+                  }}
+                  onFocus={() => setShowFontSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowFontSuggestions(false), 200)}
+                  placeholder="Search or type font name..."
+                  className="w-full p-2 border rounded-lg mt-1 bg-white outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+                {showFontSuggestions && (() => {
+                  const availableFonts = Array.from(new Set([...PRESET_FONTS, ...loadedCustomFonts.map((f) => f.name)]));
+                  const filteredFonts = fontSearchQuery.trim()
+                    ? availableFonts.filter(font => font.toLowerCase().includes(fontSearchQuery.toLowerCase()))
+                    : availableFonts;
+                  
+                  return filteredFonts.length > 0 ? (
+                    <div className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-lg">
+                      {filteredFonts.map((font) => (
+                        <button
+                          key={font}
+                          type="button"
+                          onClick={() => {
+                            handleAttributeChange('fontFamily', font);
+                            setFontSearchQuery('');
+                            setShowFontSuggestions(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition"
+                          style={{ fontFamily: font }}
+                        >
+                          {font}
+                        </button>
+                      ))}
+                    </div>
+                  ) : fontSearchQuery.trim() ? (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg px-3 py-2 text-sm text-gray-500">
+                      No matches. Press <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd> to use "{fontSearchQuery}".
+                    </div>
+                  ) : null;
+                })()}
+                <p className="text-xs text-gray-500 mt-1">Current: <span style={{ fontFamily: fontFamily }}>{fontFamily}</span></p>
+              </div>
+
+              {/* Position on Canvas */}
               <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Presets</label>
-                <select
-                  className="w-full p-2 border rounded-lg mt-1 bg-white outline-none"
-                  value={fontFamily}
-                  onChange={(e) => handleAttributeChange('fontFamily', e.target.value)}
-                >
-                  {PRESET_FONTS.map(font => <option key={font} value={font}>{font}</option>)}
-                </select>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Position on Canvas</label>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  <button
+                    onClick={() => {
+                      if (active && fabricCanvas.current) {
+                        const padding = 50;
+                        active.set({
+                          left: fabricCanvas.current.width - padding,
+                          originX: 'right',
+                        });
+                        active.setCoords();
+                        fabricCanvas.current.requestRenderAll();
+                      }
+                    }}
+                    className="h-10 rounded-lg text-sm font-bold transition flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700"
+                    title="Align Left"
+                  >
+                    ⬅
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (active && fabricCanvas.current) {
+                        active.set({
+                          left: fabricCanvas.current.width / 2,
+                          originX: 'center',
+                        });
+                        active.setCoords();
+                        fabricCanvas.current.requestRenderAll();
+                      }
+                    }}
+                    className="h-10 rounded-lg text-sm font-bold transition flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700"
+                    title="Align Center"
+                  >
+                    ↔
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (active && fabricCanvas.current) {
+                        const padding = 50;
+                        active.set({
+                          left: padding,
+                          originX: 'left',
+                        });
+                        active.setCoords();
+                        fabricCanvas.current.requestRenderAll();
+                      }
+                    }}
+                    className="h-10 rounded-lg text-sm font-bold transition flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700"
+                    title="Align Right"
+                  >
+                    ➡
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -943,11 +1172,10 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
                     fabricCanvas.current?.requestRenderAll();
                   }
                 }}
-                className={`w-full h-10 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 ${
-                  isTextLocked
+                className={`w-full h-10 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 ${isTextLocked
                     ? 'bg-red-600 hover:bg-red-700 text-white'
                     : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-                }`}
+                  }`}
               >
                 {isTextLocked ? '🔒 Field Locked' : '🔓 Field Unlocked'}
               </button>
@@ -955,39 +1183,6 @@ export default function AdminEditorById({ params }: { params: Promise<{ id: stri
                 {isTextLocked ? 'Users cannot edit this field' : 'Users can edit this field'}
               </p>
             </div>
-
-            <div className="bg-indigo-50 p-5 rounded-2xl space-y-3 border border-indigo-100">
-              <label className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Custom Google Font</label>
-              <input
-                type="text"
-                placeholder="Google Font URL..."
-                className="w-full p-2 text-xs border border-indigo-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400"
-                value={customFontUrl}
-                onChange={(e) => setCustomFontUrl(e.target.value)}
-              />
-              <input
-                type="text"
-                placeholder="Font Name"
-                className="w-full p-2 text-xs border border-indigo-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-400"
-                value={customFontName}
-                onChange={(e) => setCustomFontName(e.target.value)}
-              />
-              <button
-                onClick={handleApplyCustomFont}
-                disabled={!customFontUrl || !customFontName || isLoadingFont}
-                className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white rounded-lg text-xs font-bold transition shadow-md flex items-center justify-center gap-2"
-              >
-                {isLoadingFont ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Applying...
-                  </>
-                ) : (
-                  'Apply Custom Font'
-                )}
-              </button>
-            </div>
-
             <button
               onClick={() => {
                 fabricCanvas.current?.remove(active);

@@ -14,6 +14,8 @@ export interface TextElement {
   width?: number;
   textAlign?: string;
   angle?: number;
+  scaleX?: number;
+  scaleY?: number;
   locked?: boolean;
 }
 
@@ -85,6 +87,12 @@ export interface Category {
   id: number;
   name: string;
   description?: string | null;
+}
+
+export interface FontCdnLink {
+  id: number;
+  font_name: string;
+  cdn_link: string;
 }
 
 export interface Subcategory {

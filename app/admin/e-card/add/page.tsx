@@ -22,6 +22,10 @@ export default function AdminEditor() {
   const [fontFamily, setFontFamily] = useState('Arial');
   const [isTextLocked, setIsTextLocked] = useState(false);
 
+  // Font search states
+  const [fontSearchQuery, setFontSearchQuery] = useState('');
+  const [showFontSuggestions, setShowFontSuggestions] = useState(false);
+
   // Custom Font States
   const [customFontUrl, setCustomFontUrl] = useState('');
   const [customFontName, setCustomFontName] = useState('');
@@ -40,12 +44,65 @@ export default function AdminEditor() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
+  // Pricing States
+  const [pricingType, setPricingType] = useState<'free' | 'premium'>('free');
+  const [price, setPrice] = useState('');
+
   // Multipage States
-  const [isMultipage, setIsMultipage] = useState(false);
   const [pages, setPages] = useState<Array<{ imageUrl: string; publicId: string; canvasData?: any }>>([]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const isMultipage = pages.length > 1;
 
   const router = useRouter();
+
+  // Load managed fonts from database
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadManagedFonts = async () => {
+      try {
+        const res = await fetch('/api/font-cdn-links');
+        const json = await res.json();
+        if (!json.success || !Array.isArray(json.data)) return;
+        const fonts: CustomFont[] = json.data.map((f: any) => ({ name: f.font_name, url: f.cdn_link }));
+
+        for (const font of fonts) {
+          const id = `font-${font.name.replace(/\s+/g, '-').toLowerCase()}`;
+          if (!document.getElementById(id)) {
+            const link = document.createElement('link');
+            link.id = id;
+            link.rel = 'stylesheet';
+            link.href = font.url;
+            document.head.appendChild(link);
+          }
+          try {
+            await document.fonts.load(`16px "${font.name}"`);
+          } catch (err) {
+            console.error(`Failed to load managed font ${font.name}:`, err);
+          }
+        }
+
+        if (!cancelled) {
+          setLoadedCustomFonts((prev) => {
+            const merged = [...prev];
+            fonts.forEach((f) => {
+              if (!merged.find((item) => item.name === f.name)) {
+                merged.push(f);
+              }
+            });
+            return merged;
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load managed fonts', err);
+      }
+    };
+
+    loadManagedFonts();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -81,7 +138,7 @@ export default function AdminEditor() {
       setCloudinaryPublicId(result.publicId);
 
       // If multipage mode and pages exist, update current page
-      if (isMultipage && pages.length > 0) {
+      if (pages.length > 0) {
         // Save current text elements before updating background
         const objects = fabricCanvas.current?.getObjects() || [];
         const textElements = objects.filter(obj => obj instanceof Textbox).map((obj, i) => {
@@ -130,7 +187,7 @@ export default function AdminEditor() {
           isCancelled: () => isCanvasDisposed.current,
           onSuccess: () => {
             // Restore text elements after background update in multipage mode
-            if (isMultipage && pages.length > 0 && pages[currentPageIndex]?.canvasData?.textElements) {
+            if (pages.length > 0 && pages[currentPageIndex]?.canvasData?.textElements) {
               pages[currentPageIndex].canvasData.textElements.forEach((element: any) => {
                 const tb = new Textbox(element.text, {
                   left: element.left,
@@ -181,48 +238,6 @@ export default function AdminEditor() {
     };
     loadCategories();
   }, []);
-
-  // When multipage is toggled on, initialize first page from current canvas
-  useEffect(() => {
-    if (isMultipage && pages.length === 0 && fabricCanvas.current && templateImageUrl && cloudinaryPublicId) {
-      // Capture current canvas state as first page
-      const objects = fabricCanvas.current.getObjects();
-      const textElements = objects.filter(obj => obj instanceof Textbox).map((obj, i) => {
-        const textbox = obj as Textbox;
-        return {
-          id: String(i + 1),
-          text: textbox.text || '',
-          label: `Text Field ${i + 1}`,
-          left: textbox.left,
-          top: textbox.top,
-          fontSize: textbox.fontSize,
-          fontWeight: textbox.fontWeight,
-          fontFamily: textbox.fontFamily,
-          fill: textbox.fill,
-          width: textbox.width,
-          textAlign: textbox.textAlign,
-          angle: textbox.angle || 0,
-          locked: (textbox as any).isLocked || false,
-        };
-      });
-
-      const firstPage = {
-        imageUrl: templateImageUrl,
-        publicId: cloudinaryPublicId,
-        canvasData: {
-          textElements,
-          canvasWidth: fabricCanvas.current.width,
-          canvasHeight: fabricCanvas.current.height,
-        },
-      };
-      setPages([firstPage]);
-      setCurrentPageIndex(0);
-    } else if (!isMultipage && pages.length > 0) {
-      // When multipage is disabled, clear pages
-      setPages([]);
-      setCurrentPageIndex(0);
-    }
-  }, [isMultipage]);
 
   // Load subcategories when category changes
   useEffect(() => {
@@ -279,7 +294,7 @@ export default function AdminEditor() {
     canvas.on('selection:created', syncSidebar);
     canvas.on('selection:updated', syncSidebar);
     canvas.on('selection:cleared', () => setActive(null));
-    
+
     canvas.on('text:changed', (e) => {
       if (e.target instanceof Textbox) setTextValue(e.target.text || '');
     });
@@ -393,11 +408,6 @@ export default function AdminEditor() {
       return;
     }
 
-    if (isMultipage && pages.length === 0) {
-      alert('Please add at least one page for multipage templates');
-      return;
-    }
-
     setIsSaving(true);
     try {
       // Get all text objects from current canvas
@@ -468,6 +478,8 @@ export default function AdminEditor() {
           category_id: categoryId,
           subcategory_id: subcategoryId,
           is_multipage: isMultipage,
+          pricing_type: pricingType,
+          price: pricingType === 'premium' ? parseFloat(price) || 0 : 0,
           canvas_data: canvasData,
         }),
       });
@@ -487,7 +499,47 @@ export default function AdminEditor() {
     }
   };
 
+  // Snapshot the active canvas into a page payload (used when multipage starts or before switching pages)
+  const buildCurrentPageSnapshot = () => {
+    if (!fabricCanvas.current || !cloudinaryPublicId) return null;
+
+    const objects = fabricCanvas.current.getObjects();
+    const textElements = objects.filter(obj => obj instanceof Textbox).map((obj, i) => {
+      const textbox = obj as Textbox;
+      return {
+        id: String(i + 1),
+        text: textbox.text || '',
+        label: `Text Field ${i + 1}`,
+        left: textbox.left,
+        top: textbox.top,
+        fontSize: textbox.fontSize,
+        fontWeight: textbox.fontWeight,
+        fontFamily: textbox.fontFamily,
+        fill: textbox.fill,
+        width: textbox.width,
+        textAlign: textbox.textAlign,
+        angle: textbox.angle || 0,
+        locked: (textbox as any).isLocked || false,
+      };
+    });
+
+    return {
+      imageUrl: templateImageUrl,
+      publicId: cloudinaryPublicId,
+      canvasData: {
+        textElements,
+        canvasWidth: fabricCanvas.current.width,
+        canvasHeight: fabricCanvas.current.height,
+      },
+    };
+  };
+
   const addPage = async () => {
+    if (!cloudinaryPublicId || templateImageUrl === DEFAULT_TEMPLATE_IMAGE) {
+      alert('Please upload a background image for the current page before adding another page.');
+      return;
+    }
+
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = 'image/*';
@@ -497,6 +549,11 @@ export default function AdminEditor() {
 
       try {
         setIsUploadingImage(true);
+        const currentPageSnapshot = buildCurrentPageSnapshot();
+        if (!currentPageSnapshot) {
+          setIsUploadingImage(false);
+          return;
+        }
         const formData = new FormData();
         formData.append('file', file);
 
@@ -507,31 +564,16 @@ export default function AdminEditor() {
 
         const result = await response.json();
         if (result.success) {
-          // Save current page data before adding new page
-          if (fabricCanvas.current && pages[currentPageIndex]) {
-            const objects = fabricCanvas.current.getObjects();
-            const textElements = objects.filter(obj => obj instanceof Textbox).map((obj, i) => {
-              const textbox = obj as Textbox;
-              return {
-                id: String(i + 1),
-                text: textbox.text || '',
-                label: `Text Field ${i + 1}`,
-                left: textbox.left,
-                top: textbox.top,
-                fontSize: textbox.fontSize,
-                fontWeight: textbox.fontWeight,
-                fontFamily: textbox.fontFamily,
-                fill: textbox.fill,
-                width: textbox.width,
-                textAlign: textbox.textAlign,
-                angle: textbox.angle || 0,
-                locked: (textbox as any).isLocked || false,
-              };
-            });
-            pages[currentPageIndex].canvasData = {
-              textElements,
-              canvasWidth: fabricCanvas.current.width,
-              canvasHeight: fabricCanvas.current.height,
+          // Save the current page before appending a new one
+          let updatedPages = [...pages];
+          if (updatedPages.length === 0) {
+            updatedPages = [currentPageSnapshot];
+          } else if (updatedPages[currentPageIndex]) {
+            updatedPages[currentPageIndex] = {
+              ...updatedPages[currentPageIndex],
+              canvasData: currentPageSnapshot.canvasData,
+              imageUrl: updatedPages[currentPageIndex].imageUrl || currentPageSnapshot.imageUrl,
+              publicId: updatedPages[currentPageIndex].publicId || currentPageSnapshot.publicId,
             };
           }
 
@@ -544,9 +586,9 @@ export default function AdminEditor() {
               canvasHeight: fabricCanvas.current?.height || 600,
             },
           };
-          const updatedPages = [...pages, newPage];
+          updatedPages = [...updatedPages, newPage];
           setPages(updatedPages);
-          
+
           // Switch to the new page
           setTimeout(() => switchPage(updatedPages.length - 1), 100);
         } else {
@@ -570,7 +612,7 @@ export default function AdminEditor() {
 
     const newPages = pages.filter((_, i) => i !== index);
     setPages(newPages);
-    
+
     // If deleting current page, switch to previous or first page
     if (index === currentPageIndex) {
       const newIndex = Math.max(0, index - 1);
@@ -733,24 +775,54 @@ export default function AdminEditor() {
               </select>
             </div>
           </div>
-          
-          {/* Multipage Toggle */}
-          <div className="space-y-2 border-t pt-3">
-            <label className="text-xs font-semibold text-purple-700 flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={isMultipage}
-                onChange={(e) => setIsMultipage(e.target.checked)}
-                className="w-4 h-4 rounded"
-              />
-              Enable Multipage Template
-            </label>
-          </div>
 
+          {/* Pricing Section */}
+          <div className="border-t pt-3 space-y-3">
+            <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Pricing</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="pricing"
+                  value="free"
+                  checked={pricingType === 'free'}
+                  onChange={(e) => setPricingType(e.target.value as 'free' | 'premium')}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Free</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="pricing"
+                  value="premium"
+                  checked={pricingType === 'premium'}
+                  onChange={(e) => setPricingType(e.target.value as 'free' | 'premium')}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Premium</span>
+              </label>
+            </div>
+
+            {pricingType === 'premium' && (
+              <div>
+                <label className="text-xs font-semibold text-purple-700 block mb-1">Price ($)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Enter price"
+                  className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
           {/* Image Upload */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-purple-700">
-              {isMultipage ? `Page ${currentPageIndex + 1} Background` : 'Template Background Image'}
+              {pages.length > 0 ? `Page ${currentPageIndex + 1} Background` : 'Template Background Image'}
             </label>
             <input
               type="file"
@@ -777,19 +849,18 @@ export default function AdminEditor() {
             )}
           </div>
 
-          {/* Pages List - Only for Multipage */}
-          {isMultipage && pages.length > 0 && (
+          {/* Pages List - show when pages exist */}
+          {pages.length > 0 && (
             <div className="space-y-2 border-t pt-3">
               <label className="text-xs font-semibold text-purple-700">Pages ({pages.length})</label>
               <div className="space-y-1 max-h-40 overflow-y-auto bg-gray-50 p-2 rounded-lg">
                 {pages.map((page, idx) => (
                   <div
                     key={idx}
-                    className={`flex items-center justify-between p-2 rounded ${
-                      currentPageIndex === idx
+                    className={`flex items-center justify-between p-2 rounded ${currentPageIndex === idx
                         ? 'bg-purple-200 border border-purple-400'
                         : 'bg-white border border-gray-200 hover:bg-gray-100'
-                    }`}
+                      }`}
                   >
                     <button
                       onClick={() => switchPage(idx)}
@@ -813,25 +884,23 @@ export default function AdminEditor() {
             </div>
           )}
 
-          {/* Add Page Button - Only for Multipage */}
-          {isMultipage && (
-            <button
-              onClick={addPage}
-              disabled={isUploadingImage}
-              aria-label="Add new page to multipage template"
-              title="Add Page (Upload background image)"
-              className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-700"
-            >
-              {isUploadingImage ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Adding Page...
-                </>
-              ) : (
-                '+ Add Page'
-              )}
-            </button>
-          )}
+          {/* Add Page Button */}
+          <button
+            onClick={addPage}
+            disabled={isUploadingImage}
+            aria-label="Add new page to multipage template"
+            title="Add Page (Upload background image)"
+            className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-emerald-700"
+          >
+            {isUploadingImage ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Adding Page...
+              </>
+            ) : (
+              '+ Add Page'
+            )}
+          </button>
           <button
             onClick={saveTemplate}
             disabled={isSaving || !templateName.trim()}
@@ -861,12 +930,6 @@ export default function AdminEditor() {
 
         {active ? (
           <div className="space-y-4">
-            {/* Edit Header */}
-            <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
-              <h2 className="text-sm font-bold text-blue-900">✏️ Edit Text</h2>
-              <p className="text-xs text-blue-600 mt-1">Modify selected text properties</p>
-            </div>
-
             {/* Text Content Section */}
             <div className="bg-white p-4 rounded-xl border border-gray-200 space-y-2">
               <label className="text-xs font-semibold text-gray-700">📝 Text Content</label>
@@ -882,17 +945,61 @@ export default function AdminEditor() {
             {/* Text Formatting Section */}
             <div className="bg-white p-4 rounded-xl border border-gray-200 space-y-3">
               <label className="text-xs font-semibold text-gray-700">🎨 Formatting</label>
-              
+
               {/* Font Selection */}
-              <div>
+              <div className="relative">
                 <label className="text-xs text-gray-600 font-medium mb-1 block">Font Style</label>
-                <select
+                <input
+                  type="text"
+                  value={fontSearchQuery || fontFamily}
+                  onChange={(e) => {
+                    setFontSearchQuery(e.target.value);
+                    setShowFontSuggestions(true);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && fontSearchQuery.trim()) {
+                      e.preventDefault();
+                      handleAttributeChange('fontFamily', fontSearchQuery.trim());
+                      setFontSearchQuery('');
+                      setShowFontSuggestions(false);
+                    }
+                  }}
+                  onFocus={() => setShowFontSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowFontSuggestions(false), 200)}
+                  placeholder="Search or type font name..."
                   className="w-full p-2.5 border border-gray-300 rounded-lg bg-white outline-none hover:border-blue-400 focus:ring-2 focus:ring-blue-500 text-sm font-medium"
-                  value={fontFamily}
-                  onChange={(e) => handleAttributeChange('fontFamily', e.target.value)}
-                >
-                  {PRESET_FONTS.map(font => <option key={font} value={font}>{font}</option>)}
-                </select>
+                />
+                {showFontSuggestions && (() => {
+                  const availableFonts = Array.from(new Set([...PRESET_FONTS, ...loadedCustomFonts.map((f) => f.name)]));
+                  const filteredFonts = fontSearchQuery.trim()
+                    ? availableFonts.filter(font => font.toLowerCase().includes(fontSearchQuery.toLowerCase()))
+                    : availableFonts;
+                  
+                  return filteredFonts.length > 0 ? (
+                    <div className="absolute z-10 mt-1 w-full max-h-60 overflow-y-auto bg-white border border-gray-300 rounded-md shadow-lg">
+                      {filteredFonts.map((font) => (
+                        <button
+                          key={font}
+                          type="button"
+                          onClick={() => {
+                            handleAttributeChange('fontFamily', font);
+                            setFontSearchQuery('');
+                            setShowFontSuggestions(false);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 hover:text-blue-700 transition"
+                          style={{ fontFamily: font }}
+                        >
+                          {font}
+                        </button>
+                      ))}
+                    </div>
+                  ) : fontSearchQuery.trim() ? (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg px-3 py-2 text-sm text-gray-500">
+                      No matches. Press <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd> to use "{fontSearchQuery}".
+                    </div>
+                  ) : null;
+                })()}
+                <p className="text-xs text-gray-500 mt-1">Current: <span style={{ fontFamily: fontFamily }}>{fontFamily}</span></p>
               </div>
 
               {/* Size, Color, Bold Grid */}
@@ -928,13 +1035,69 @@ export default function AdminEditor() {
                   <label className="text-xs text-gray-600 font-medium mb-1 block">Bold</label>
                   <button
                     onClick={toggleBold}
-                    className={`w-full h-10 rounded-lg text-sm font-bold transition flex items-center justify-center ${
-                      bold
+                    className={`w-full h-10 rounded-lg text-sm font-bold transition flex items-center justify-center ${bold
                         ? 'bg-gray-900 hover:bg-gray-800 text-white shadow-md'
                         : 'bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700'
-                    }`}
+                      }`}
                   >
                     B
+                  </button>
+                </div>
+              </div>
+
+              {/* Position on Canvas */}
+              <div>
+                <label className="text-xs text-gray-600 font-medium mb-1 block">Position on Canvas</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => {
+                      if (active && fabricCanvas.current) {
+                        const padding = 50;
+                        active.set({
+                          left: fabricCanvas.current.width - padding,
+                          originX: 'right',
+                        });
+                        active.setCoords();
+                        fabricCanvas.current.requestRenderAll();
+                      }
+                    }}
+                    className="h-10 rounded-lg text-sm font-bold transition flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700"
+                    title="Align Left"
+                  >
+                    ⬅
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (active && fabricCanvas.current) {
+                        active.set({
+                          left: fabricCanvas.current.width / 2,
+                          originX: 'center',
+                        });
+                        active.setCoords();
+                        fabricCanvas.current.requestRenderAll();
+                      }
+                    }}
+                    className="h-10 rounded-lg text-sm font-bold transition flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700"
+                    title="Align Center"
+                  >
+                    ↔
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (active && fabricCanvas.current) {
+                        const padding = 50;
+                        active.set({
+                          left: padding,
+                          originX: 'left',
+                        });
+                        active.setCoords();
+                        fabricCanvas.current.requestRenderAll();
+                      }
+                    }}
+                    className="h-10 rounded-lg text-sm font-bold transition flex items-center justify-center bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700"
+                    title="Align Right"
+                  >
+                    ➡
                   </button>
                 </div>
               </div>
@@ -954,11 +1117,10 @@ export default function AdminEditor() {
                 aria-label={`${isTextLocked ? 'Unlock' : 'Lock'} this text field`}
                 aria-pressed={isTextLocked}
                 title={`${isTextLocked ? 'Unlock' : 'Lock'} field - prevents user editing`}
-                className={`w-full h-10 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 focus:outline-none focus:ring-2 ${
-                  isTextLocked
+                className={`w-full h-10 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 focus:outline-none focus:ring-2 ${isTextLocked
                     ? 'bg-red-600 hover:bg-red-700 text-white shadow-md focus:ring-red-800'
                     : 'bg-green-500 hover:bg-green-600 text-white shadow-md focus:ring-green-700'
-                }`}
+                  }`}
               >
                 {isTextLocked ? '🔒 Lock Field' : '🔓 Unlock Field'}
               </button>
@@ -966,42 +1128,6 @@ export default function AdminEditor() {
                 {isTextLocked ? 'Locked - users cannot edit' : 'Unlocked - users can edit'}
               </p>
             </div>
-
-            {/* Custom Font Section */}
-            <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-200 space-y-3">
-              <label className="text-xs font-semibold text-indigo-900 block">✨ Custom Google Font</label>
-              <input
-                type="text"
-                placeholder="Paste Google Font URL..."
-                className="w-full p-2.5 text-xs border border-indigo-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                value={customFontUrl}
-                onChange={(e) => setCustomFontUrl(e.target.value)}
-              />
-              <input
-                type="text"
-                placeholder="Font family name..."
-                className="w-full p-2.5 text-xs border border-indigo-300 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                value={customFontName}
-                onChange={(e) => setCustomFontName(e.target.value)}
-              />
-              <button
-                onClick={handleApplyCustomFont}
-                disabled={!customFontUrl || !customFontName || isLoadingFont}
-                aria-label="Apply custom Google Font to selected text"
-                title="Apply Font (Enter)"
-                className="w-full h-10 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-indigo-800 disabled:focus:ring-gray-400"
-              >
-                {isLoadingFont ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Loading...
-                  </>
-                ) : (
-                  '➕ Apply Font'
-                )}
-              </button>
-            </div>
-
             <button
               onClick={() => {
                 fabricCanvas.current?.remove(active);
