@@ -75,10 +75,12 @@ export interface ApiResponse<T = any> {
 export interface UserEcard {
   id: number;
   template_id: number;
+  user_id?: number | null;
   user_name?: string | null;
   customized_data: any;
   preview_url: string;
   preview_urls?: string[]; // Multi-page support
+  public_slug?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -123,6 +125,14 @@ export interface User {
   status: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface AuthedUser {
+  id: number;
+  name: string;
+  email?: string | null;
+  mobile?: string | null;
+  role: string;
 }
 
 export interface AuthPayload {

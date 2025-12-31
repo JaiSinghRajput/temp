@@ -3,36 +3,49 @@
 import HeroSection from '@/components/Home/Hero';
 import SmoothCarousel from '@/components/ui/SmoothCarousel';
 import { useAuth } from '@/contexts/AuthContext';
+import { Template } from '@/lib/types';
 import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 
 export default function Home() {
   const { user, loading } = useAuth();
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
 
-  const welcomeCards = [
-    {
-      id: 1,
-      image: "https://shop.dreamweddinghub.com/public/uploads/cards/1766640502_pCI2dP1s2p.webp",
-    },
-    {
-      id: 2,
-      image: "https://shop.dreamweddinghub.com/public/uploads/cards/1766640502_pCI2dP1s2p.webp",
-    },
-    {
-      id: 3,
-      image: "https://shop.dreamweddinghub.com/public/uploads/cards/1766640502_pCI2dP1s2p.webp",
-    },
-    {
-      id: 4,
-      image: "https://shop.dreamweddinghub.com/public/uploads/cards/1766640502_pCI2dP1s2p.webp",
-    },
-    {
-      id: 5,
-      image: "https://shop.dreamweddinghub.com/public/uploads/cards/1766640502_pCI2dP1s2p.webp",
-    },
-  ];
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      try {
+        const res = await fetch('/api/templates');
+        const result = await res.json();
+        if (result.success && Array.isArray(result.data)) {
+          setTemplates(result.data);
+        }
+      } catch (err) {
+        console.error('Failed to load templates', err);
+      } finally {
+        setTemplatesLoading(false);
+      }
+    };
 
+    fetchTemplates();
+  }, []);
 
-  if (loading) {
+  const carouselItems = useMemo(() => {
+    return templates
+      .map((t) => ({
+        id: t.id,
+        image:
+          t.thumbnail_uri ||
+          t.template_image_url ||
+          t.pages?.[0]?.imageUrl ||
+          '',
+        title: t.name,
+        link: `/cards/edit/${t.id}`,
+      }))
+      .filter((item) => item.image);
+  }, [templates]);
+
+  if (loading || templatesLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-slate-50 to-slate-100">
         <div className="text-center">
@@ -46,9 +59,20 @@ export default function Home() {
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   return (
-    <>
-      <HeroSection />
-      <SmoothCarousel items={welcomeCards} visibleItems={5} title="Best E-Card" />
-    </>
+    <main className="min-h-screen bg-white">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
+        <HeroSection />
+
+        {carouselItems.length > 0 && (
+          <section>
+            <SmoothCarousel
+              items={carouselItems}
+              visibleItems={5}
+              title="Best E-Card"
+            />
+          </section>
+        )}
+      </div>
+    </main>
   );
 }

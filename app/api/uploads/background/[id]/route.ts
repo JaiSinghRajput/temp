@@ -22,11 +22,11 @@ import dbUtil from '@/app/utils/db.util';
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   return dbUtil.normal(
     async () => {
-      const { id } = params;
+      const { id } = await params;
 
       if (!id || isNaN(Number(id))) {
         return NextResponse.json(

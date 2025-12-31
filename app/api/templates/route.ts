@@ -27,8 +27,8 @@ export async function GET() {
     );
 
     const data = rows.map((row) => {
-      const canvasData = safeParseJSON((row as any).canvas_data, {});
-      const pages = safeParseJSON((row as any).pages, canvasData.pages || null);
+      const canvasData = safeParseJSON<any>((row as any).canvas_data, {});
+      const pages = safeParseJSON((row as any).pages, canvasData?.pages || null);
       return {
         ...row,
         canvas_data: canvasData,

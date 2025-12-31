@@ -4,11 +4,22 @@ import { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { slugify } from '@/lib/utils';
 import crypto from 'crypto';
 
-// GET list of recent user ecards (optional convenience)
-export async function GET() {
+// GET list of user ecards
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const userId = searchParams.get('user_id');
+
+    const where = userId ? 'WHERE user_id = ?' : '';
+    const params = userId ? [userId] : [];
+
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, template_id, user_name, preview_url, created_at FROM user_ecards ORDER BY created_at DESC LIMIT 50'
+      `SELECT id, template_id, user_id, user_name, public_slug, preview_url, preview_urls, created_at
+       FROM user_ecards
+       ${where}
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      params
     );
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
@@ -24,7 +35,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { template_id, user_name, customized_data, preview_uri, preview_urls } = body;
+    const { template_id, user_name, user_id, customized_data, preview_uri, preview_urls } = body;
 
     if (!template_id || !customized_data) {
       return NextResponse.json(
@@ -63,9 +74,10 @@ export async function POST(request: NextRequest) {
       : preview_uri || null;
 
     const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO user_ecards (template_id, user_name, customized_data, preview_url, preview_urls, public_slug) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO user_ecards (template_id, user_id, user_name, customized_data, preview_url, preview_urls, public_slug) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [
         template_id,
+        user_id || null,
         user_name || null,
         JSON.stringify(customized_data),
         primaryPreview,

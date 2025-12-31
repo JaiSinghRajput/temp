@@ -106,14 +106,18 @@ export async function loadCanvasPage({
   const baseDesignWidth = canvasWidth || imgWidth;
   const baseDesignHeight = canvasHeight || imgHeight;
 
+  // Let the design expand to fit larger backgrounds while preserving template intent
   const designSize = {
-    width: imgWidth,
-    height: imgHeight,
+    width: Math.max(baseDesignWidth, imgWidth),
+    height: Math.max(baseDesignHeight, imgHeight),
   };
 
-  const designToImageScaleX = imgWidth / baseDesignWidth;
-  const designToImageScaleY = imgHeight / baseDesignHeight;
-  const designToImageScale = Math.min(designToImageScaleX, designToImageScaleY);
+  // Scale and center the background inside the design area
+  const bgFitScale = Math.min(designSize.width / imgWidth, designSize.height / imgHeight);
+  const bgWidth = imgWidth * bgFitScale;
+  const bgHeight = imgHeight * bgFitScale;
+  const bgLeft = (designSize.width - bgWidth) / 2;
+  const bgTop = (designSize.height - bgHeight) / 2;
 
   // Check if operation was cancelled
   if (isCancelled?.()) {
@@ -127,22 +131,22 @@ export async function loadCanvasPage({
 
   canvas.backgroundImage = img;
   img.set({
-    scaleX: scale,
-    scaleY: scale,
+    scaleX: bgFitScale * scale,
+    scaleY: bgFitScale * scale,
     originX: 'left',
     originY: 'top',
-    left: 0,
-    top: 0,
+    left: bgLeft * scale,
+    top: bgTop * scale,
   });
 
   const textObjects = new Map<string, Textbox>();
   const originalTextData = new Map<string, { left: number; top: number; fontSize: number; width?: number; angle?: number }>();
 
   textElements.forEach((data) => {
-    const baseLeft = data.left * designToImageScaleX;
-    const baseTop = data.top * designToImageScaleY;
-    const baseFontSize = data.fontSize * designToImageScale;
-    const baseWidth = data.width ? data.width * designToImageScaleX : undefined;
+    const baseLeft = data.left;
+    const baseTop = data.top;
+    const baseFontSize = data.fontSize;
+    const baseWidth = data.width;
     const baseScaleX = data.scaleX ?? 1;
     const baseScaleY = data.scaleY ?? 1;
 
@@ -159,6 +163,7 @@ export async function loadCanvasPage({
       top: baseTop * scale,
       fontSize: baseFontSize * scale,
       fontFamily: data.fontFamily,
+      fontWeight: data.fontWeight || 'normal',
       fill: data.fill,
       width: baseWidth ? baseWidth * scale : undefined,
       textAlign: data.textAlign as any,

@@ -16,6 +16,9 @@ interface MultiPageCanvasProps {
   customFonts?: Array<{ name: string; url: string }>;
   onTextChange?: (pageIndex: number, textId: string, newText: string) => void;
   onPageChange?: (pageIndex: number) => void;
+  onTextSelect?: (pageIndex: number, textId: string | null) => void;
+  onLoadingChange?: (isLoading: boolean) => void;
+  isMobile?: boolean;
   className?: string;
 }
 
@@ -24,6 +27,9 @@ export function MultiPageCanvas({
   customFonts,
   onTextChange,
   onPageChange,
+  onTextSelect,
+  onLoadingChange,
+  isMobile = false,
   className = '',
 }: MultiPageCanvasProps) {
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -52,10 +58,21 @@ export function MultiPageCanvas({
     }
   }, [pages?.length, currentPageIndex]);
 
+  // Reset last loaded page when pages prop or layout mode changes so we force a reload
+  useEffect(() => {
+    lastLoadedPage.current = null;
+  }, [pages, isMobile]);
+
   // Load and render canvas
   useEffect(() => {
-    if (!pages?.length || !currentPage) return;
+    if (!pages?.length || !currentPage) {
+      console.warn('No pages or currentPage', { pagesLength: pages?.length, currentPage });
+      onLoadingChange?.(false);
+      return;
+    }
     if (isInitializing.current) return;
+
+    console.log('Canvas effect triggered', { pagesLength: pages.length, currentPageIndex });
 
     // Check if we need to reload (page changed or background changed)
     const needsReload = !lastLoadedPage.current ||
@@ -63,7 +80,10 @@ export function MultiPageCanvas({
       lastLoadedPage.current.imageUrl !== currentPage.imageUrl ||
       lastLoadedPage.current.backgroundId !== currentPage.backgroundId;
 
-    if (!needsReload) return;
+    if (!needsReload) {
+      console.log('No reload needed');
+      return;
+    }
 
     let isMounted = true;
     isInitializing.current = true;
@@ -92,15 +112,18 @@ export function MultiPageCanvas({
       }
 
       try {
-        // Load fonts
-        await loadCustomFonts(customFonts);
+        // Load only fonts that are actually used on this page to speed up render
+        const fontsInUse = new Set<string>((currentPage.textElements || []).map((t) => t.fontFamily).filter(Boolean));
+        const fontsToLoad = (customFonts || []).filter((f) => fontsInUse.has(f.name));
+        console.log('Loading fonts:', { fontsInUse: Array.from(fontsInUse), fontsToLoadCount: fontsToLoad.length });
+        await loadCustomFonts(fontsToLoad);
 
         if (!isMounted) {
           isInitializing.current = false;
           return;
         }
 
-        // Create canvas
+        console.log('Creating canvas...');        // Create canvas
         const canvas = new Canvas(canvasRef.current, {
           backgroundColor: '#ffffff',
           selection: false,
@@ -109,7 +132,7 @@ export function MultiPageCanvas({
 
         // Calculate available space
         const { clientWidth, clientHeight } = containerRef.current;
-        const padding = 48;
+        const padding = isMobile ? 16 : 48;
         const availableW = Math.max(clientWidth - padding, 240);
         const availableH = Math.max(clientHeight - padding, 240);
 
@@ -122,7 +145,11 @@ export function MultiPageCanvas({
           canvasWidth: currentPage.canvasWidth,
           canvasHeight: currentPage.canvasHeight,
           scale: 1,
-          onTextSelect: (id) => isMounted && setSelectedTextId(id),
+          onTextSelect: (id) => {
+            if (!isMounted) return;
+            setSelectedTextId(id);
+            onTextSelect?.(currentPageIndexRef.current, id);
+          },
           isCancelled: () => !isMounted,
         });
 
@@ -131,11 +158,10 @@ export function MultiPageCanvas({
           return;
         }
 
-        // Calculate responsive scale
+        // Calculate responsive scale (allow upscaling to fill container)
         const scale = Math.min(
           availableW / result.designSize.width,
-          availableH / result.designSize.height,
-          1
+          availableH / result.designSize.height
         );
 
         // Apply scale to canvas and elements
@@ -169,8 +195,13 @@ export function MultiPageCanvas({
           imageUrl: currentPage.imageUrl,
           backgroundId: currentPage.backgroundId,
         };
+        
+        console.log('Canvas loaded successfully, signaling ready');
+        // Signal that canvas is loaded
+        onLoadingChange?.(false);
       } catch (err) {
         console.error('Canvas load error:', err);
+        onLoadingChange?.(false);
       } finally {
         isInitializing.current = false;
       }
@@ -180,7 +211,7 @@ export function MultiPageCanvas({
     return () => {
       isMounted = false;
     };
-  }, [currentPageIndex]);
+  }, [currentPageIndex, pages, currentPage, isMobile, onLoadingChange]);
 
   // Update text on canvas when pages data changes (without re-initializing)
   useEffect(() => {
@@ -205,6 +236,7 @@ export function MultiPageCanvas({
       setCurrentPageIndex(index);
       setSelectedTextId(null);
       onPageChange?.(index);
+      onTextSelect?.(index, null);
     }
   };
 
@@ -232,9 +264,9 @@ export function MultiPageCanvas({
       {/* Canvas */}
       <div
         ref={containerRef}
-        className="flex-1 flex justify-center items-center bg-linear-to-br from-blue-50 to-purple-50 overflow-auto p-4 min-h-[40vh]"
+        className={`flex-1 flex justify-center items-center bg-linear-to-br from-blue-50 to-purple-50 overflow-auto p-3 md:p-6 ${isMobile ? 'min-h-[70vh]' : 'min-h-screen'}`}
       >
-        <div className="shadow-2xl rounded-lg overflow-hidden border border-gray-200 bg-white">
+        <div className="shadow-2xl rounded-lg overflow-hidden border border-gray-200 bg-white flex items-center justify-center">
           <canvas ref={canvasRef} />
         </div>
       </div>

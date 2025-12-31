@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import NavbarDropdown, { DropdownItem } from "@/components/ui/ECardDropdown";
 import { useAuth } from "@/contexts/AuthContext";
-
+import { ShoppingCartCheckout,Search } from "@mui/icons-material";
 
 const Navbar: React.FC = () => {
     const { user, loading, logout } = useAuth();
@@ -54,7 +54,9 @@ const Navbar: React.FC = () => {
 
                 {/* Right Icons */}
                 <div className="flex items-center gap-4">
-                    <Link href="/search">🔍</Link>
+                    <Link href="/search">
+                    <Search />
+                    </Link>
                     {!loading && user ? (
                         <button
                             type="button"
@@ -68,7 +70,9 @@ const Navbar: React.FC = () => {
                         <Link href="/login">User</Link>
                     )}
                     <div className="relative">
-                        <Link href="/cart">🛒</Link>
+                        <Link href="/cart">
+                        <ShoppingCartCheckout />
+                        </Link>
                         <span className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-[#d18b47] text-white text-xs flex items-center justify-center">
                             0
                         </span>
