@@ -1,5 +1,6 @@
 import { Canvas, Textbox, FabricImage } from 'fabric';
 import { TextElement } from './types';
+import { uploadService } from '@/services';
 
 export interface LoadCanvasOptions {
   canvas: Canvas;
@@ -29,14 +30,9 @@ async function resolveBackgroundUrl(
   if (backgroundId) {
     try {
       console.log('Resolving backgroundId:', backgroundId);
-      const response = await fetch(`/api/uploads/background/${backgroundId}`);
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Resolved background URL:', data.data.cloudinary_url);
-        return data.data.cloudinary_url;
-      } else {
-        console.error('Background API error:', response.status, response.statusText);
-      }
+      const data = await uploadService.getBackground(String(backgroundId));
+      console.log('Resolved background URL:', data.data.cloudinary_url);
+      return data.data.cloudinary_url;
     } catch (err) {
       console.error('Error resolving background:', err);
     }
@@ -80,7 +76,7 @@ export async function loadCanvasPage({
 }: LoadCanvasOptions): Promise<{
   backgroundImage: FabricImage;
   textObjects: Map<string, Textbox>;
-  originalTextData: Map<string, { left: number; top: number; fontSize: number; width?: number; angle?: number }>;
+  originalTextData: Map<string, { left: number; top: number; fontSize: number; width?: number; angle?: number; scaleX?: number; scaleY?: number }>;
   designSize: { width: number; height: number };
 }> {
   // Resolve background URL
@@ -125,22 +121,22 @@ export async function loadCanvasPage({
   }
 
   canvas.setDimensions({
-    width: designSize.width * scale,
-    height: designSize.height * scale,
+    width: designSize.width,
+    height: designSize.height,
   });
 
   canvas.backgroundImage = img;
   img.set({
-    scaleX: bgFitScale * scale,
-    scaleY: bgFitScale * scale,
+    scaleX: bgFitScale,
+    scaleY: bgFitScale,
     originX: 'left',
     originY: 'top',
-    left: bgLeft * scale,
-    top: bgTop * scale,
+    left: bgLeft,
+    top: bgTop,
   });
 
   const textObjects = new Map<string, Textbox>();
-  const originalTextData = new Map<string, { left: number; top: number; fontSize: number; width?: number; angle?: number }>();
+  const originalTextData = new Map<string, { left: number; top: number; fontSize: number; width?: number; angle?: number; scaleX?: number; scaleY?: number }>();
 
   textElements.forEach((data) => {
     const baseLeft = data.left;
@@ -156,16 +152,18 @@ export async function loadCanvasPage({
       fontSize: baseFontSize,
       width: baseWidth,
       angle: data.angle,
+      scaleX: baseScaleX,
+      scaleY: baseScaleY,
     });
 
     const textbox = new Textbox(data.text, {
-      left: baseLeft * scale,
-      top: baseTop * scale,
-      fontSize: baseFontSize * scale,
+      left: baseLeft,
+      top: baseTop,
+      fontSize: baseFontSize,
       fontFamily: data.fontFamily,
       fontWeight: data.fontWeight || 'normal',
       fill: data.fill,
-      width: baseWidth ? baseWidth * scale : undefined,
+      width: baseWidth ? baseWidth : undefined,
       textAlign: data.textAlign as any,
       angle: data.angle || 0,
       scaleX: baseScaleX,

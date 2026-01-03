@@ -15,7 +15,7 @@ interface PageHeaderProps {
 const PageHeader: React.FC<PageHeaderProps> = ({
   title,
   breadcrumbs,
-  backgroundImage,
+  backgroundImage = "https://png.pngtree.com/thumb_back/fh260/background/20240913/pngtree-stunning-red-and-blue-smoke-images-for-download-image_16191211.jpg",
 }) => {
   return (
     <section

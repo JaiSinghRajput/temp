@@ -1,22 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromToken } from "@/lib/auth";
 
+// Explicitly allow preflight and HEAD to avoid 405s
+export function OPTIONS() {
+  return NextResponse.json({ success: true }, { status: 200 });
+}
+
+export function HEAD(req: NextRequest) {
+  return GET(req);
+}
+
+// Some clients may still POST to verify; treat POST like GET to avoid 405s
 export async function POST(req: NextRequest) {
-  // Logout by clearing the auth token cookie
-  const response = NextResponse.json(
-    { success: true, message: "Logged out successfully" },
-    { status: 200 }
-  );
-
-  response.cookies.set("__auth_token__", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
-    maxAge: 0, // This expires the cookie immediately
-    path: "/",
-  });
-
-  return response;
+  return GET(req);
 }
 
 export async function GET(req: NextRequest) {
@@ -44,7 +40,7 @@ export async function GET(req: NextRequest) {
       {
         success: true,
         user: {
-          id: user.id,
+          uid: user.uid,
           name: user.name,
           email: user.email,
           mobile: user.mobile,
@@ -61,31 +57,3 @@ export async function GET(req: NextRequest) {
     );
   }
 }
-
-/**
- * POST /api/auth/logout
- * Logout endpoint - clears the authentication token cookie
- *
- * Response:
- * {
- *   "success": true,
- *   "message": "Logged out successfully"
- * }
- */
-
-/**
- * GET /api/auth/verify
- * Verify current authentication token and get user info
- *
- * Response:
- * {
- *   "success": true,
- *   "user": {
- *     "id": 1,
- *     "name": "User Name",
- *     "email": "user@example.com",
- *     "mobile": "+919876543210",
- *     "role": "admin"
- *   }
- * }
- */

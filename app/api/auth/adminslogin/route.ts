@@ -4,6 +4,7 @@ import dbUtil from "@/app/utils/db.util";
 import { generateJWT } from "@/lib/jwt";
 import { verifyPassword, hashPassword } from "@/lib/bcryptUtils";
 import { Admin, AuthPayload } from "@/lib/types";
+import { COOKIE_OPTIONS } from "@/lib/constants";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
         );
       }
 
-      if (role && !["admin", "super_admin"].includes(role)) {
+      if (role && !["admin", "editor"].includes(role)) {
         return NextResponse.json(
           { message: "Invalid role", success: false },
           { status: 400 }
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
 
       // Generate JWT token
       const tokenPayload: AuthPayload = {
-        id: admin.id,
+        uid: String(admin.id),
         name: admin.name,
         email: admin.email,
         mobile: null,
@@ -80,7 +81,7 @@ export async function POST(req: Request) {
         {
           message: "Login successful",
           user: {
-            id: admin.id,
+            uid: String(admin.id),
             name: admin.name,
             email: admin.email,
             role: admin.role,
@@ -91,13 +92,17 @@ export async function POST(req: Request) {
       );
 
       // Set secure cookie with JWT token
-      response.cookies.set("__auth_token__", token, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
-        maxAge: 60 * 60 * 24 * 7, // 7 days
-        path: "/",
-      });
+      response.cookies.set(
+        COOKIE_OPTIONS.AUTH_TOKEN.name,
+        token,
+        {
+          httpOnly: COOKIE_OPTIONS.AUTH_TOKEN.httpOnly,
+          secure: COOKIE_OPTIONS.AUTH_TOKEN.secure,
+          sameSite: COOKIE_OPTIONS.AUTH_TOKEN.sameSite,
+          maxAge: COOKIE_OPTIONS.AUTH_TOKEN.maxAge,
+          path: COOKIE_OPTIONS.AUTH_TOKEN.path,
+        }
+      );
 
       return response;
     },
@@ -110,28 +115,3 @@ export async function POST(req: Request) {
     }
   );
 }
-
-/**
- * POST /api/auth/adminslogin
- * 
- * Admin login endpoint
- * 
- * Request body:
- * {
- *   "email": "admin@example.com",
- *   "password": "password123",
- *   "role": "admin" // optional, defaults to any role
- * }
- * 
- * Response:
- * {
- *   "success": true,
- *   "message": "Login successful",
- *   "user": {
- *     "id": 1,
- *     "name": "Admin Name",
- *     "email": "admin@example.com",
- *     "role": "admin"
- *   }
- * }
- */

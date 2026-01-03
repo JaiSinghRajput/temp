@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { authService } from '@/services';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { Input } from '@/components/ui/input';
 import { OtpInput } from '@/components/ui/otp-input';
@@ -20,71 +21,52 @@ export default function UserRegisterPage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [otp, setOtp] = useState('');
-  const [tempUserId, setTempUserId] = useState<number | null>(null);
+  const [tempUserId, setTempUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    try {
-      const response = await fetch('/api/auth/user/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone,
-          email: email || undefined,
-          first_name: firstName,
-          last_name: lastName,
-        }),
-      });
+    const data = await authService.sendRegistrationOtp({
+      phone,
+      email: email || undefined,
+      first_name: firstName,
+      last_name: lastName,
+    });
 
-      const data = await response.json();
-
-      if (data.success) {
-        setTempUserId(data.tempUserId);
-        toast.success('OTP sent to your phone!');
-        setStep(2);
-      } else {
-        toast.error(data.message || 'Failed to send OTP');
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
+    if (data.success) {
+      setTempUserId(data.tempUserUid || null);
+      toast.success('OTP sent to your phone!');
+      setStep(2);
+    } else {
+      toast.error(data.message || 'Failed to send OTP');
     }
+    setLoading(false);
   };
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    try {
-      const response = await fetch('/api/auth/user/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          otp,
-          tempUserId,
-        }),
-      });
+    const data = await authService.verifyRegistrationOtp({
+      otp,
+      tempUserUid: tempUserId || '',
+    });
 
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success('Registration successful! Redirecting...');
-        await refreshUser();
-        setTimeout(() => {
-          router.push('/');
-        }, 1500);
-      } else {
-        toast.error(data.message || 'OTP verification failed');
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
+    if (data.success) {
+      toast.success('Registration successful!');
+      // Refresh user state from cookie
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await refreshUser();
+      // Navigate home smoothly without hard refresh
+      setTimeout(() => {
+        router.push('/');
+      }, 300);
+    } else {
+      toast.error(data.message || 'OTP verification failed');
     }
+    setLoading(false);
   };
 
   return (
@@ -113,8 +95,8 @@ export default function UserRegisterPage() {
                 label="Phone Number *"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="+919876543210"
-                helperText="Format: +91 followed by 10 digits"
+                placeholder="9876543210"
+                helperText="Enter your 10-digit mobile number"
                 colorScheme="green"
                 required
               />

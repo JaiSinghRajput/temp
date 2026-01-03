@@ -21,10 +21,11 @@ export async function GET(
   try {
     const { id } = await params;
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT t.*, cc.name AS category_name, cs.name AS subcategory_name
+      `SELECT t.*, cc.name AS category_name, cs.name AS subcategory_name, b.cloudinary_url AS background_url
        FROM templates t
        LEFT JOIN card_categories cc ON cc.id = t.category_id
        LEFT JOIN card_subcategories cs ON cs.id = t.subcategory_id
+       LEFT JOIN backgrounds b ON t.background_id = b.id
        WHERE t.id = ? AND t.is_active = TRUE`,
       [id]
     );
@@ -38,12 +39,38 @@ export async function GET(
 
     const row = rows[0];
     const canvasData = safeParseJSON<any>((row as any).canvas_data, {});
-    const pages = safeParseJSON((row as any).pages, canvasData?.pages || null);
+    let pages = safeParseJSON((row as any).pages, canvasData?.pages || null);
+    
+    // If multipage, resolve background URLs for each page
+    if (pages && Array.isArray(pages)) {
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
+        if (page.backgroundId) {
+          try {
+            const [bgRows] = await pool.query<RowDataPacket[]>(
+              'SELECT cloudinary_url FROM backgrounds WHERE id = ?',
+              [page.backgroundId]
+            );
+            if (bgRows.length > 0) {
+              pages[i].imageUrl = (bgRows[0] as any).cloudinary_url;
+            }
+          } catch (bgError) {
+            console.error(`Failed to fetch background for page ${i}:`, bgError);
+          }
+        }
+      }
+    }
+    
+    // Resolve template image URL: use background URL if background_id exists
+    const templateImageUrl = (row as any).background_id && (row as any).background_url 
+      ? (row as any).background_url 
+      : (row as any).template_image_url;
 
     return NextResponse.json({
       success: true,
       data: {
         ...row,
+        template_image_url: templateImageUrl,
         canvas_data: canvasData,
         pages,
         is_multipage: (row as any).is_multipage ?? Boolean(pages),
@@ -70,7 +97,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, template_image_url, canvas_data, is_active, cloudinary_public_id, old_public_id, thumbnail_uri, thumbnail_public_id, old_thumbnail_public_id, category_id, subcategory_id, is_multipage, pricing_type, price } = body;
+    const { name, description, template_image_url, canvas_data, is_active, cloudinary_public_id, old_public_id, thumbnail_uri, thumbnail_public_id, old_thumbnail_public_id, category_id, subcategory_id, is_multipage, pricing_type, price, background_id, color } = body;
 
     const normalizedCanvasData = canvas_data || {};
     const pages = normalizedCanvasData.pages || body.pages || null;
@@ -99,7 +126,7 @@ export async function PUT(
     }
 
     const [result] = await pool.query<ResultSetHeader>(
-      'UPDATE templates SET name = ?, description = ?, template_image_url = ?, canvas_data = ?, pages = ?, is_multipage = ?, thumbnail_url = ?, thumbnail_public_id = ?, is_active = ?, cloudinary_public_id = ?, category_id = ?, subcategory_id = ?, pricing_type = ?, price = ? WHERE id = ?',
+      'UPDATE templates SET name = ?, description = ?, template_image_url = ?, canvas_data = ?, pages = ?, is_multipage = ?, thumbnail_url = ?, thumbnail_public_id = ?, is_active = ?, cloudinary_public_id = ?, category_id = ?, subcategory_id = ?, pricing_type = ?, price = ?, background_id = ?, color = ? WHERE id = ?',
       [
         name,
         description || null,
@@ -115,6 +142,8 @@ export async function PUT(
         subcategory_id || null,
         pricing_type || 'free',
         pricing_type === 'premium' ? parseFloat(price) || 0 : 0,
+        background_id || null,
+        color || null,
         id,
       ]
     );

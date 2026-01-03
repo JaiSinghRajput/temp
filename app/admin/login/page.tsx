@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { authService } from '@/services';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
@@ -17,10 +18,14 @@ export default function AdminLoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Redirect if already authenticated as admin
+  // Redirect if already authenticated as admin/editor
   useEffect(() => {
-    if (!loading && user && (user.role === 'admin' || user.role === 'super_admin')) {
-      router.push('/admin');
+    if (!loading && user) {
+      if (user.role === 'editor') {
+        router.push('/admin/e-video/requests');
+      } else if (user.role === 'admin' || user.role === 'super_admin') {
+        router.push('/admin');
+      }
     }
   }, [loading, user, router]);
 
@@ -28,28 +33,16 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    try {
-      const response = await fetch('/api/auth/adminslogin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success('Login successful!');
-        await refreshUser();
-        router.push('/admin');
-      } else {
-        toast.error(data.message || 'Login failed');
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'An error occurred');
-    } finally {
-      setIsSubmitting(false);
+    const data = await authService.adminLogin({ email, password });
+    if (data.success) {
+      toast.success('Login successful!');
+      await refreshUser();
+      const destination = data.user?.role === 'editor' ? '/admin/e-video/requests' : '/admin';
+      router.push(destination);
+    } else {
+      toast.error(data.message || 'Login failed');
     }
+    setIsSubmitting(false);
   };
   return (
     <AuthLayout

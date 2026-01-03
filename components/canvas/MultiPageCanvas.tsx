@@ -41,7 +41,7 @@ export function MultiPageCanvas({
   const textObjects = useRef<Map<string, any>>(new Map());
   const isInitializing = useRef(false);
   const currentPageIndexRef = useRef(currentPageIndex);
-  const lastLoadedPage = useRef<{ pageIndex: number; imageUrl?: string; backgroundId?: number } | null>(null);
+  const lastLoadedPage = useRef<{ pageIndex: number; imageUrl?: string; backgroundId?: number; scale?: number } | null>(null);
 
   const currentPage = pages?.[currentPageIndex];
   const hasMultiplePages = pages?.length > 1;
@@ -136,7 +136,7 @@ export function MultiPageCanvas({
         const availableW = Math.max(clientWidth - padding, 240);
         const availableH = Math.max(clientHeight - padding, 240);
 
-        // Load page content
+        // Load page content at base size (scale: 1)
         const result = await loadCanvasPage({
           canvas,
           imageUrl: currentPage.imageUrl,
@@ -158,20 +158,37 @@ export function MultiPageCanvas({
           return;
         }
 
-        // Calculate responsive scale (allow upscaling to fill container)
+        // Calculate responsive scale to fit container
         const scale = Math.min(
           availableW / result.designSize.width,
           availableH / result.designSize.height
         );
 
-        // Apply scale to canvas and elements
+        console.log('Responsive scale calculated:', {
+          availableW,
+          availableH,
+          designWidth: result.designSize.width,
+          designHeight: result.designSize.height,
+          scale,
+          scaledWidth: result.designSize.width * scale,
+          scaledHeight: result.designSize.height * scale,
+        });
+
+        // Set canvas to SCALED dimensions (this makes everything render at the correct size)
         canvas.setDimensions({
           width: result.designSize.width * scale,
           height: result.designSize.height * scale,
         });
 
-        result.backgroundImage.set({ scaleX: scale, scaleY: scale });
+        // Scale background image and position
+        result.backgroundImage.set({
+          scaleX: (result.backgroundImage.scaleX || 1) * scale,
+          scaleY: (result.backgroundImage.scaleY || 1) * scale,
+          left: (result.backgroundImage.left || 0) * scale,
+          top: (result.backgroundImage.top || 0) * scale,
+        });
 
+        // Scale all text elements - scale positions and fontSize together
         result.textObjects.forEach((textbox) => {
           const id = (textbox as any).textId;
           const orig = result.originalTextData.get(id);
@@ -181,6 +198,8 @@ export function MultiPageCanvas({
               top: orig.top * scale,
               fontSize: orig.fontSize * scale,
               width: orig.width ? orig.width * scale : undefined,
+              scaleX: orig.scaleX ?? 1,
+              scaleY: orig.scaleY ?? 1,
             });
             textbox.setCoords();
           }
@@ -194,6 +213,7 @@ export function MultiPageCanvas({
           pageIndex: currentPageIndex,
           imageUrl: currentPage.imageUrl,
           backgroundId: currentPage.backgroundId,
+          scale,
         };
         
         console.log('Canvas loaded successfully, signaling ready');

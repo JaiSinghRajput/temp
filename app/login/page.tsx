@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { authService } from '@/services';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { Input } from '@/components/ui/input';
 import { OtpInput } from '@/components/ui/otp-input';
@@ -18,7 +19,7 @@ export default function UserLoginPage() {
   const [step, setStep] = useState(1);
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
-  const [userId, setUserId] = useState<number | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -27,55 +28,37 @@ export default function UserLoginPage() {
     setLoading(true);
     setError('');
 
-    try {
-      const response = await fetch('/api/auth/mobiletlogin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
-      });
+    const data = await authService.requestLoginOtp(phone);
 
-      const data = await response.json();
-
-      if (data.success) {
-        setUserId(data.id);
-        toast.success('OTP sent to your phone!');
-        setStep(2);
-      } else {
-        toast.error(data.message || 'Failed to send OTP');
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
+    if (data.success) {
+      setUserId(data.uid || null);
+      toast.success('OTP sent to your phone!');
+      setStep(2);
+    } else {
+      toast.error(data.message || 'Failed to send OTP');
     }
+    setLoading(false);
   };
 
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    try {
-      const response = await fetch('/api/auth/mobiletlogin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ otp, id: userId }),
-      });
+    const data = await authService.verifyLoginOtp({ otp, uid: userId || '' });
 
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success('Login successful!');
-        await refreshUser();
+    if (data.success) {
+      toast.success('Login successful!');
+      // Refresh user state from cookie
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await refreshUser();
+      // Navigate home - router.push handles the navigation smoothly
+      setTimeout(() => {
         router.push('/');
-      } else {
-        toast.error(data.message || 'Invalid OTP');
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
+      }, 300);
+    } else {
+      toast.error(data.message || 'Invalid OTP');
     }
+    setLoading(false);
   };
 
   return (

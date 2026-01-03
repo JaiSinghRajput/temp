@@ -4,11 +4,39 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserEcard } from '@/lib/types';
+import { userEcardService, paymentService } from '@/services';
+
+declare global {
+  interface Window {
+    Razorpay?: any;
+  }
+}
 
 export default function MyCardsPage() {
   const { user, loading } = useAuth();
   const [cards, setCards] = useState<UserEcard[]>([]);
   const [cardsLoading, setCardsLoading] = useState(true);
+  const [payingId, setPayingId] = useState<number | null>(null);
+
+  const ensureRazorpay = () =>
+    new Promise<void>((resolve, reject) => {
+      if (typeof window === 'undefined') {
+        reject(new Error('Window is not available'));
+        return;
+      }
+
+      if (window.Razorpay) {
+        resolve();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load Razorpay'));
+      document.body.appendChild(script);
+    });
 
   useEffect(() => {
     if (!user) {
@@ -19,8 +47,7 @@ export default function MyCardsPage() {
 
     const fetchCards = async () => {
       try {
-        const res = await fetch(`/api/user-ecards?user_id=${user.id}`);
-        const result = await res.json();
+        const result = await userEcardService.getUserEcards(user.uid);
         if (result.success) {
           setCards(result.data || []);
         }
@@ -33,6 +60,98 @@ export default function MyCardsPage() {
 
     fetchCards();
   }, [user]);
+
+  const handleDownload = async (card: UserEcard, previewUrl?: string | null) => {
+    if (typeof window === 'undefined') return;
+
+    const preview = previewUrl || card.preview_url;
+    if (!preview) {
+      alert('Preview not available for this card');
+      return;
+    }
+
+    // Free or already-paid cards download directly
+    if (card.pricing_type !== 'premium' || card.payment_status === 'paid') {
+      window.open(preview, '_blank', 'noopener');
+      return;
+    }
+
+    setPayingId(card.id);
+
+    try {
+      await ensureRazorpay();
+
+      const orderJson = await paymentService.createOrder({ user_ecard_id: card.id } as any);
+      if (!orderJson?.success) {
+        throw new Error(orderJson?.error || 'Failed to start payment');
+      }
+
+      const orderData = orderJson.data || {};
+
+      if (orderData.payment_status === 'paid' || orderData.payment_required === false) {
+        setCards((prev) =>
+          prev.map((c) => (c.id === card.id ? { ...c, payment_status: 'paid' } : c))
+        );
+        window.open(preview, '_blank', 'noopener');
+        setPayingId(null);
+        return;
+      }
+
+      const options = {
+        key: orderData.key,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: 'E-Card Download',
+        description: 'Complete payment to download your premium card',
+        order_id: orderData.order_id,
+        handler: async (response: any) => {
+          try {
+            const verifyJson = await paymentService.verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              ecard_id: card.id,
+            });
+            if (verifyJson?.success) {
+              setCards((prev) =>
+                prev.map((c) =>
+                  c.id === card.id
+                    ? {
+                        ...c,
+                        payment_status: 'paid',
+                        payment_id: response.razorpay_payment_id,
+                        payment_order_id: response.razorpay_order_id,
+                        payment_signature: response.razorpay_signature,
+                      }
+                    : c
+                )
+              );
+              window.open(preview, '_blank', 'noopener');
+            } else {
+              alert(verifyJson?.error || 'Payment verification failed');
+            }
+          } catch (verifyErr) {
+            console.error('Payment verification failed', verifyErr);
+            alert('Payment verification failed');
+          } finally {
+            setPayingId(null);
+          }
+        },
+        modal: {
+          ondismiss: () => setPayingId(null),
+        },
+        theme: { color: '#0F172A' },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', () => setPayingId(null));
+      rzp.open();
+    } catch (err: any) {
+      console.error('Download flow failed', err);
+      alert(err?.message || 'Unable to start payment');
+      setPayingId(null);
+    }
+  };
 
   if (loading || cardsLoading) {
     return (
@@ -68,7 +187,7 @@ export default function MyCardsPage() {
             <h1 className="text-2xl font-bold text-gray-900">My Published Cards</h1>
             <p className="text-sm text-gray-600">Cards you have customized and published.</p>
           </div>
-          <Link href="/cards" className="text-primary font-semibold hover:underline">Create New</Link>
+          <Link href="/e-card" className="text-primary font-semibold hover:underline">Create New</Link>
         </div>
 
         {cards.length === 0 ? (
@@ -82,9 +201,13 @@ export default function MyCardsPage() {
                 ? card.preview_urls[0]
                 : card.preview_url;
 
+              const viewHref = card.category_slug && card.subcategory_slug
+                ? `/e-card/${card.category_slug}/${card.subcategory_slug}/${card.public_slug}`
+                : `/e-card/${card.public_slug}`;
+
               return (
                 <div key={card.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="aspect-[3/4] bg-gray-100 flex items-center justify-center">
+                  <div className="aspect-3/4 bg-gray-100 flex items-center justify-center">
                     {preview ? (
                       <img src={preview} alt="Card preview" className="w-full h-full object-cover" />
                     ) : (
@@ -96,21 +219,31 @@ export default function MyCardsPage() {
                     <div className="flex gap-2">
                       {card.public_slug && (
                         <Link
-                          href={`/cards/${card.public_slug}`}
+                          href={viewHref}
                           className="flex-1 text-center px-3 py-2 rounded-lg bg-primary text-white text-sm font-semibold"
                         >
                           View
                         </Link>
                       )}
-                      {card.preview_url && (
-                        <a
-                          href={preview || '#'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 text-center px-3 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold"
+                      {preview ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDownload(card, preview)}
+                          disabled={payingId === card.id}
+                          className="flex-1 text-center px-3 py-2 rounded-lg bg-gray-100 text-gray-800 text-sm font-semibold disabled:opacity-60"
                         >
-                          Download
-                        </a>
+                          {card.pricing_type === 'premium' && card.payment_status !== 'paid'
+                            ? payingId === card.id
+                              ? 'Processing...'
+                              : 'Pay & Download'
+                            : payingId === card.id
+                              ? 'Opening...'
+                              : 'Download'}
+                        </button>
+                      ) : (
+                        <span className="flex-1 text-center px-3 py-2 rounded-lg bg-gray-100 text-gray-400 text-sm font-semibold">
+                          No preview
+                        </span>
                       )}
                     </div>
                   </div>

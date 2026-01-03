@@ -21,7 +21,7 @@ const Footer: React.FC = () => {
             shop.dreamweddinghub.com
           </p>
           <p className="text-sm text-[#d18b47] font-medium">
-            +91 9376717777
+            9376717777
           </p>
         </div>
 

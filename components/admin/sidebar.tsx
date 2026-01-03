@@ -22,49 +22,84 @@ import {
   Home as HomeIcon,
   Logout as LogoutIcon,
   TextFields as FontsIcon,
+  VideoCameraBack as EVideoIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/contexts/AuthContext';
 
-type Item = { name: string; href: string };
-type Section = { key: string; title: string; items?: Item[]; href?: string };
+type NavItem = { key: string; name: string; href?: string; children?: NavItem[] };
+type Section = { key: string; title: string; items?: NavItem[]; href?: string };
 
 const DRAWER_WIDTH = 256;
 
 export function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const sections: Section[] = useMemo(
-    () => [
+  const sections: Section[] = useMemo(() => {
+    if (user?.role === 'editor') {
+      return [
+        {
+          key: 'e-video-requests',
+          title: 'E-Video Requests',
+          href: '/admin/e-video/requests',
+        },
+      ];
+    }
+
+    return [
       { key: 'dashboard', title: 'Dashboard', href: '/admin' },
       {
         key: 'templates',
-        title: 'Templates',
+        title: 'Cards',
         items: [
-          { name: 'All Templates', href: '/admin/e-card' },
-          { name: 'Create Template', href: '/admin/e-card/add' },
+          { key: 'cards-all', name: 'All Cards', href: '/admin/e-card' },
+          { key: 'cards-create', name: 'Create Card', href: '/admin/e-card/add' },
+        ],
+      },
+      {
+        key: 'e-video',
+        title: 'E-Video',
+        items: [
+          { key: 'evideo-all', name: 'All Video', href: '/admin/e-video' },
+          { key: 'evideo-create', name: 'Create Video Invite', href: '/admin/e-video/add' },
+          { key: 'evideo-requests', name: 'Requests', href: '/admin/e-video/requests' },
         ],
       },
       {
         key: 'categories',
-        title: 'Card Categories',
+        title: 'Categories',
         items: [
-          { name: 'Categories', href: '/admin/categories' },
-          { name: 'Subcategories', href: '/admin/subcategories' },
+          {
+            key: 'categories-card',
+            name: 'Card',
+            children: [
+              { key: 'categories-card-main', name: 'Categories', href: '/admin/categories' },
+              { key: 'categories-card-sub', name: 'Subcategories', href: '/admin/subcategories' },
+            ],
+          },
+          {
+            key: 'categories-video',
+            name: 'Video',
+            children: [
+              { key: 'categories-video-main', name: 'Categories', href: '/admin/video-categories' },
+              { key: 'categories-video-sub', name: 'Subcategories', href: '/admin/video-subcategories' },
+            ],
+          },
         ],
       },
-      {
-        key: 'fonts',
-        title: 'Fonts',
-        items: [{ name: 'Font CDN Links', href: '/admin/fonts' }],
-      },
-    ],
-    []
-  );
+      { key: 'fonts', title: 'Fonts', href: '/admin/fonts' },
+    ];
+  }, [user?.role]);
 
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ templates: true });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    templates: true,
+    'e-video': true,
+    categories: true,
+    'categories-card': true,
+    'categories-video': true,
+  });
 
   const toggleGroup = (key: string) => {
     setOpenGroups((s) => ({ ...s, [key]: !s[key] }));
@@ -82,6 +117,8 @@ export function AdminSidebar() {
         return <CategoriesIcon />;
       case 'fonts':
         return <FontsIcon />;
+      case 'e-video':
+        return <EVideoIcon />;
       default:
         return null;
     }
@@ -131,6 +168,71 @@ export function AdminSidebar() {
           const hasChildren = section.items && section.items.length > 0;
           const sectionActive = section.href ? isActive(section.href) : false;
 
+          const renderNavItems = (items: NavItem[], depth = 1) => (
+            items.map((item) => {
+              const hasGrandChildren = item.children && item.children.length > 0;
+              const isItemActive = item.href ? isActive(item.href) : false;
+              const paddingLeft = 4 + depth * 2;
+
+              return (
+                <Box key={item.key}>
+                  {hasGrandChildren ? (
+                    <>
+                      <ListItemButton
+                        onClick={() => toggleGroup(item.key)}
+                        sx={{
+                          pl: paddingLeft,
+                          '&:hover': {
+                            backgroundColor: 'action.hover',
+                          },
+                        }}
+                      >
+                        <ListItemText
+                          primary={item.name}
+                          primaryTypographyProps={{
+                            variant: 'body2',
+                            fontSize: '0.875rem',
+                            fontWeight: 500,
+                          }}
+                        />
+                        {openGroups[item.key] ? <ExpandLess /> : <ExpandMore />}
+                      </ListItemButton>
+                      <Collapse in={openGroups[item.key]} timeout="auto" unmountOnExit>
+                        <List component="div" disablePadding>
+                          {renderNavItems(item.children!, depth + 1)}
+                        </List>
+                      </Collapse>
+                    </>
+                  ) : (
+                    <ListItemButton
+                      component={Link}
+                      href={item.href || '#'}
+                      sx={{
+                        pl: paddingLeft,
+                        backgroundColor: isItemActive
+                          ? 'action.selected'
+                          : 'transparent',
+                        color: isItemActive ? 'primary.main' : 'text.primary',
+                        fontWeight: isItemActive ? 600 : 400,
+                        '&:hover': {
+                          backgroundColor: 'action.hover',
+                        },
+                      }}
+                    >
+                      <ListItemText
+                        primary={item.name}
+                        primaryTypographyProps={{
+                          variant: 'body2',
+                          fontSize: '0.875rem',
+                        }}
+                      />
+                    </ListItemButton>
+                  )}
+                </Box>
+              );
+            })
+          );
+
           return (
             <Box key={section.key}>
               {hasChildren ? (
@@ -157,34 +259,7 @@ export function AdminSidebar() {
                   {/* Child items */}
                   <Collapse in={openGroups[section.key]} timeout="auto" unmountOnExit>
                     <List component="div" disablePadding>
-                      {section.items!.map((item) => (
-                        <ListItemButton
-                          key={item.href}
-                          component={Link}
-                          href={item.href}
-                          sx={{
-                            pl: 4,
-                            backgroundColor: isActive(item.href)
-                              ? 'action.selected'
-                              : 'transparent',
-                            color: isActive(item.href)
-                              ? 'primary.main'
-                              : 'text.primary',
-                            fontWeight: isActive(item.href) ? 600 : 400,
-                            '&:hover': {
-                              backgroundColor: 'action.hover',
-                            },
-                          }}
-                        >
-                          <ListItemText
-                            primary={item.name}
-                            primaryTypographyProps={{
-                              variant: 'body2',
-                              fontSize: '0.875rem',
-                            }}
-                          />
-                        </ListItemButton>
-                      ))}
+                      {renderNavItems(section.items!)}
                     </List>
                   </Collapse>
                 </>

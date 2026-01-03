@@ -1,14 +1,15 @@
 'use client';
-
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Canvas, Textbox } from 'fabric';
 import { loadCustomFonts } from '@/lib/canvas-renderer';
-import { uploadDataUrlToCloudinary } from '@/lib/cloudinary';
+import { uploadDataUrlToCloudinary, uploadToCloudinary } from '@/lib/cloudinary';
 import { loadCanvasBackgroundImage, validateImageFile } from '@/lib/canvas-utils';
+import { COLOR_OPTIONS } from '@/lib/constants';
+import { ColorSelect } from '@/components/ui/color-select';
 import type { Category, Subcategory, CustomFont } from '@/lib/types';
 
-const DEFAULT_TEMPLATE_IMAGE = '/images/template.png';
+const DEFAULT_TEMPLATE_IMAGE = '';
 
 type EditorMode = 'create' | 'edit';
 
@@ -58,6 +59,7 @@ export default function TemplateEditor({
 
   const [pricingType, setPricingType] = useState<'free' | 'premium'>('free');
   const [price, setPrice] = useState('');
+  const [cardColor, setCardColor] = useState(COLOR_OPTIONS[0].value);
 
   const [pages, setPages] = useState<Array<{ imageUrl: string; publicId: string; canvasData?: any }>>([]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -65,13 +67,19 @@ export default function TemplateEditor({
 
   const [templateImageUrl, setTemplateImageUrl] = useState(DEFAULT_TEMPLATE_IMAGE);
   const [cloudinaryPublicId, setCloudinaryPublicId] = useState<string | null>(null);
+  const [backgroundId, setBackgroundId] = useState<number | null>(null);
+
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewPublicId, setPreviewPublicId] = useState<string | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isUploadingPreview, setIsUploadingPreview] = useState(false);
   
-  // Loading states for edit mode
+  // Loading states - always wait for fonts to load first
   const [isBackgroundLoading, setIsBackgroundLoading] = useState(mode === 'edit');
-  const [isContentReady, setIsContentReady] = useState(mode !== 'edit');
+  const [isFontsLoading, setIsFontsLoading] = useState(true);
+  const [isContentReady, setIsContentReady] = useState(false);
 
 
   /* ---------------- LOAD MANAGED FONTS ---------------- */
@@ -91,9 +99,13 @@ export default function TemplateEditor({
         if (!cancelled) {
           setManagedFonts(fonts);
           setLoadedCustomFonts(fonts); // Set all managed fonts as loaded
+          setIsFontsLoading(false); // Mark fonts as loaded
         }
       } catch (err) {
         console.error('Failed to load managed fonts', err);
+        if (!cancelled) {
+          setIsFontsLoading(false); // Mark as done even on error
+        }
       }
     };
 
@@ -142,6 +154,10 @@ export default function TemplateEditor({
     setSubcategoryId(initialData.subcategory_id || null);
     setPricingType(initialData.pricing_type || 'free');
     setPrice(String(initialData.price || ''));
+    setCardColor(initialData.color || COLOR_OPTIONS[0].value);
+    setBackgroundId(initialData.background_id || null);
+    setPreviewImageUrl(initialData.thumbnail_uri || null);
+    setPreviewPublicId(initialData.thumbnail_public_id || null);
 
     // Ensure we have a valid image URL before setting it
     let imageUrl = initialData.template_image_url;
@@ -231,7 +247,7 @@ export default function TemplateEditor({
           isCancelled: () => isCanvasDisposed.current,
           onSuccess: () => {
             setIsBackgroundLoading(false);
-            setIsContentReady(true);
+            // Don't set isContentReady here - wait for the coordinating effect
           },
           onError: () => {
             setIsBackgroundLoading(false);
@@ -239,44 +255,75 @@ export default function TemplateEditor({
               console.error('Failed to load background image:', templateImageUrl);
               alert('Failed to load background image. Using default.');
             }
-            setIsContentReady(true); // Still mark as ready even if failed
+            // Don't set isContentReady here - wait for the coordinating effect
           },
         });
       } catch (err) {
         console.error('Background loading error:', err);
         setIsBackgroundLoading(false);
-        setIsContentReady(true);
+        // Don't set isContentReady here - wait for the coordinating effect
       }
     };
 
     loadBackground();
   }, [templateImageUrl]);
 
+  /* ---------------- COORDINATE CONTENT READY STATE ---------------- */
+  useEffect(() => {
+    // Only set content ready when both fonts and background are loaded
+    if (!isFontsLoading && !isBackgroundLoading) {
+      console.log('Both fonts and background loaded - setting content ready');
+      setIsContentReady(true);
+    }
+  }, [isFontsLoading, isBackgroundLoading]);
+
   /* ---------------- LOAD INITIAL TEXT (EDIT MODE) ---------------- */
   useEffect(() => {
     if (!fabricCanvas.current || mode !== 'edit' || !initialData) return;
+    
+    // Don't load text until fonts are loaded
+    if (isFontsLoading) {
+      console.log('Waiting for fonts to load before loading text elements...');
+      return;
+    }
 
     const textElements = initialData.canvas_data?.textElements || [];
     if (textElements.length === 0) return;
 
     const loadTextElements = async () => {
-      // Preload all unique fonts first
+      // Collect all unique fonts from text elements
       const uniqueFonts = Array.from(new Set(textElements.map((t: any) => t.fontFamily).filter(Boolean)));
       const fontsToLoad: CustomFont[] = [];
+      
+      console.log('Loading fonts for text elements:', uniqueFonts);
       
       // First try to find fonts in managedFonts, then in loadedCustomFonts
       for (const fontName of uniqueFonts) {
         const fontDef = managedFonts.find((f) => f.name === fontName) || loadedCustomFonts.find((f) => f.name === fontName);
         if (fontDef) {
+          console.log(`Found font definition for: ${fontName}`);
           fontsToLoad.push(fontDef);
         } else {
           console.warn(`Font ${fontName} not found in managed or loaded fonts`);
         }
       }
 
+      // Also check if canvas_data has customFonts array
+      const canvasCustomFonts = initialData.canvas_data?.customFonts || [];
+      if (Array.isArray(canvasCustomFonts) && canvasCustomFonts.length > 0) {
+        console.log('Adding custom fonts from canvas_data:', canvasCustomFonts);
+        for (const font of canvasCustomFonts) {
+          // Check if already in fontsToLoad
+          if (!fontsToLoad.some((f) => f.name === font.name)) {
+            fontsToLoad.push(font);
+          }
+        }
+      }
+
       // Load fonts from CDN and wait for them to be ready
       if (fontsToLoad.length > 0) {
         try {
+          console.log('Loading custom fonts:', fontsToLoad.map((f) => f.name));
           await loadCustomFonts(fontsToLoad);
           
           // Wait for all fonts to be loaded in document
@@ -288,6 +335,7 @@ export default function TemplateEditor({
           
           // Extra wait for document.fonts.ready
           await document.fonts.ready;
+          console.log('All fonts loaded successfully');
         } catch (err) {
           console.error('Failed to preload fonts for text elements:', err);
         }
@@ -315,14 +363,14 @@ export default function TemplateEditor({
       });
 
       fabricCanvas.current?.requestRenderAll();
-      setIsContentReady(true);
+      // Don't set isContentReady here - the coordinating effect will handle it
     };
 
     loadTextElements().catch((err) => {
       console.error('Error loading text elements:', err);
-      setIsContentReady(true);
+      // Don't set isContentReady here - the coordinating effect will handle it
     });
-  }, [initialData, mode]);
+  }, [initialData, mode, managedFonts, loadedCustomFonts, isFontsLoading]);
 
   /* ---------------- HANDLERS ---------------- */
   const handleAttributeChange = async (key: string, value: any) => {
@@ -499,6 +547,30 @@ export default function TemplateEditor({
       alert(error.message || 'Failed to upload image');
     } finally {
       setIsUploadingImage(false);
+    }
+  };
+
+  const handlePreviewUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      alert(validation.error);
+      return;
+    }
+
+    setIsUploadingPreview(true);
+    const input = e.target;
+    try {
+      const uploadResult = await uploadToCloudinary(file);
+      setPreviewImageUrl(uploadResult.secureUrl);
+      setPreviewPublicId(uploadResult.publicId);
+    } catch (error: any) {
+      alert(error.message || 'Failed to upload preview image');
+    } finally {
+      setIsUploadingPreview(false);
+      input.value = '';
     }
   };
 
@@ -750,8 +822,15 @@ export default function TemplateEditor({
         };
       }
 
-      const thumbnailDataURL = fabricCanvas.current.toDataURL({ format: 'png', multiplier: 0.3 });
-      const thumbUpload = await uploadDataUrlToCloudinary(thumbnailDataURL, 'template-thumbnail.png');
+      let thumbSecureUrl = previewImageUrl;
+      let thumbPublicId = previewPublicId;
+
+      if (!thumbSecureUrl) {
+        const thumbnailDataURL = fabricCanvas.current.toDataURL({ format: 'png', multiplier: 0.3 });
+        const thumbUpload = await uploadDataUrlToCloudinary(thumbnailDataURL, 'template-thumbnail.png');
+        thumbSecureUrl = thumbUpload.secureUrl;
+        thumbPublicId = thumbUpload.publicId;
+      }
 
       let canvasData: any = {
         textElements,
@@ -778,14 +857,16 @@ export default function TemplateEditor({
         description: templateDescription,
         category_id: categoryId,
         subcategory_id: subcategoryId,
+        color: cardColor || null,
         pricing_type: pricingType,
         price: pricingType === 'premium' ? Number(price) : 0,
         is_multipage: isMultipage,
         template_image_url: isMultipage && pages.length > 0 ? pages[0].imageUrl : templateImageUrl,
         cloudinary_public_id: cloudinaryPublicId,
-        thumbnail_uri: thumbUpload.secureUrl,
-        thumbnail_public_id: thumbUpload.publicId,
+        thumbnail_uri: thumbSecureUrl,
+        thumbnail_public_id: thumbPublicId,
         canvas_data: canvasData,
+        background_id: backgroundId,
       };
 
       if (onSave) {
@@ -804,7 +885,7 @@ export default function TemplateEditor({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error('Failed to create template');
+        if (!res.ok) throw new Error('Failed to Create Card');
         router.push('/admin/e-card');
       }
     } catch (error) {
@@ -824,7 +905,11 @@ export default function TemplateEditor({
           <div className="bg-white rounded-lg p-8 text-center">
             <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-gray-700 font-semibold">Loading template...</p>
-            <p className="text-sm text-gray-500 mt-2">Please wait while we load the background and content</p>
+            <p className="text-sm text-gray-500 mt-2">
+              {isFontsLoading && 'Loading fonts...'}
+              {!isFontsLoading && isBackgroundLoading && 'Loading background...'}
+              {!isFontsLoading && !isBackgroundLoading && 'Preparing canvas...'}
+            </p>
           </div>
         </div>
       )}
@@ -838,7 +923,7 @@ export default function TemplateEditor({
       <div className="w-96 bg-white border-l border-gray-200 shadow-xl flex flex-col p-6 gap-6 overflow-y-auto">
         <div className="flex justify-between items-center border-b pb-4">
           <h1 className="text-xl font-bold text-gray-800">
-            {mode === 'create' ? 'Create Template' : 'Edit Template'}
+            {mode === 'create' ? 'Create Card' : 'Edit Template'}
           </h1>
           <button
             onClick={() => onCancel?.() || router.push('/admin/e-card')}
@@ -850,7 +935,7 @@ export default function TemplateEditor({
 
         <div className="bg-purple-50 p-4 rounded-xl space-y-3 border border-purple-100">
           <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">
-            Template Information
+            Card Information
           </label>
           <input
             type="text"
@@ -898,6 +983,19 @@ export default function TemplateEditor({
             </div>
           </div>
 
+          {/* Color */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Card Color</label>
+            <ColorSelect
+              options={COLOR_OPTIONS}
+              value={cardColor}
+              onChange={setCardColor}
+              className="w-full"
+              selectClassName="w-full border-purple-200 focus:ring-purple-400"
+            />
+            <div className="text-xs text-gray-600">Selected: {cardColor}</div>
+          </div>
+
           <div className="border-t pt-3 space-y-3">
             <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Pricing</label>
             <div className="flex gap-4">
@@ -921,13 +1019,13 @@ export default function TemplateEditor({
                   onChange={(e) => setPricingType(e.target.value as 'free' | 'premium')}
                   className="w-4 h-4"
                 />
-                <span className="text-sm">Premium</span>
+                <span className="text-sm">paid</span>
               </label>
             </div>
 
             {pricingType === 'premium' && (
               <div>
-                <label className="text-xs font-semibold text-purple-700 block mb-1">Price ($)</label>
+                <label className="text-xs font-semibold text-purple-700 block mb-1">Price (₹)</label>
                 <input
                   type="number"
                   step="0.01"
@@ -943,7 +1041,7 @@ export default function TemplateEditor({
 
           <div className="space-y-2">
             <label className="text-xs font-semibold text-purple-700">
-              {pages.length > 0 ? `Page ${currentPageIndex + 1} Background` : 'Template Background Image'}
+              {pages.length > 0 ? `Page ${currentPageIndex + 1} Background` : 'Card Background Image'}
             </label>
             <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" id="image-upload" />
             <label
@@ -959,6 +1057,51 @@ export default function TemplateEditor({
                 '📷 Upload Background'
               )}
             </label>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-purple-700">Preview / Card Image (optional)</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handlePreviewUpload}
+              className="hidden"
+              id="preview-upload"
+            />
+            <div className="flex gap-2">
+              <label
+                htmlFor="preview-upload"
+                className="flex-1 h-10 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isUploadingPreview ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Uploading...
+                  </>
+                ) : (
+                  '📤 Upload Preview'
+                )}
+              </label>
+
+              {previewImageUrl && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewImageUrl(null);
+                    setPreviewPublicId(null);
+                  }}
+                  className="h-10 px-3 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold border border-gray-200 hover:bg-gray-200"
+                >
+                  Use generated
+                </button>
+              )}
+            </div>
+
+            {previewImageUrl && (
+              <div className="relative h-32 bg-gray-50 border rounded-lg overflow-hidden">
+                <img src={previewImageUrl} alt="Preview" className="w-full h-full object-cover" />
+              </div>
+            )}
           </div>
 
           {pages.length > 0 && (

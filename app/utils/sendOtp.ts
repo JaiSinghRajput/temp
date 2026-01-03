@@ -1,6 +1,4 @@
 import axios from "axios";
-
-
 export async function sendOtp(phone: string) {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 

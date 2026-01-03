@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { slugify } from '@/lib/utils';
 
 export async function GET() {
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
       'SELECT id, name, description, status, created_at FROM card_categories ORDER BY name ASC'
     );
-    return NextResponse.json({ success: true, data: rows });
+
+    const shaped = rows.map((row) => ({
+      ...row,
+      slug: slugify(String((row as any).name || '')),
+    }));
+
+    return NextResponse.json({ success: true, data: shaped });
   } catch (error) {
     console.error('Error fetching categories:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch categories' }, { status: 500 });
@@ -37,6 +44,7 @@ export async function POST(request: NextRequest) {
         name,
         description: description || null,
         status: 1,
+        slug: slugify(name),
       },
     });
   } catch (error: any) {

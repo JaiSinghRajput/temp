@@ -5,6 +5,8 @@ import { sendOtp } from "@/app/utils/sendOtp";
 import { generateJWT } from "@/lib/jwt";
 import { User } from "@/lib/types";
 import { PoolConnection } from "mysql2/promise";
+import crypto from "crypto";
+import { COOKIE_OPTIONS } from "@/lib/constants";
 
 interface RegisterRequest {
   phone?: string;
@@ -12,21 +14,24 @@ interface RegisterRequest {
   first_name?: string;
   last_name?: string;
   otp?: string;
-  tempUserId?: number;
+  tempUserUid?: string;
 }
 
 export async function POST(req: Request) {
   return dbUtil.withTransaction(
     async (conn: PoolConnection) => {
       const body: RegisterRequest = await req.json();
-      const { phone, email, first_name, last_name, otp, tempUserId } = body;
+      const { phone, email, first_name, last_name, otp, tempUserUid } = body;
+
+      let verificationUid = tempUserUid;
 
       // Step 1: Validate details and send OTP
       if (phone && first_name && last_name && !otp) {
-        // Validate phone format
-        if (phone.trim().length < 10) {
+        // Validate phone format - must be exactly 10 digits
+        const phoneDigits = phone.trim().replace(/\D/g, '');
+        if (phoneDigits.length !== 10) {
           return NextResponse.json(
-            { message: "Invalid phone number", success: false },
+            { message: "Invalid phone number. Please enter 10 digits.", success: false },
             { status: 400 }
           );
         }
@@ -44,7 +49,7 @@ export async function POST(req: Request) {
 
         // Check if phone already exists
         const [existingRows]: any = await conn.query(
-          "SELECT id FROM users WHERE phone = ?",
+          "SELECT uid FROM users WHERE phone = ?",
           [phone]
         );
 
@@ -58,7 +63,7 @@ export async function POST(req: Request) {
         // Check if email already exists (if provided)
         if (email) {
           const [emailRows]: any = await conn.query(
-            "SELECT id FROM users WHERE email = ?",
+            "SELECT uid FROM users WHERE email = ?",
             [email]
           );
 
@@ -71,20 +76,21 @@ export async function POST(req: Request) {
         }
 
         // Create temporary user record with status=0
-        const [result]: any = await conn.query(
-          "INSERT INTO users (phone, email, first_name, last_name, status) VALUES (?, ?, ?, ?, ?)",
-          [phone, email || null, first_name, last_name, 0]
-        );
+        const uid = crypto.randomUUID();
 
-        const tempUserId = result.insertId;
+        await conn.query(
+          "INSERT INTO users (uid, phone, email, first_name, last_name, status) VALUES (?, ?, ?, ?, ?, ?)",
+          [uid, phone, email || null, first_name, last_name, 0]
+        );
 
         // Generate and send OTP
         try {
-          const generatedOtp = await sendOtp(phone);
+          // const generatedOtp = await sendOtp(phone);
+          const generatedOtp = 111111;
 
           if (!generatedOtp) {
             // Delete the temporary user if OTP fails
-            await conn.query("DELETE FROM users WHERE id = ?", [tempUserId]);
+            await conn.query("DELETE FROM users WHERE uid = ?", [uid]);
             return NextResponse.json(
               {
                 message: "Failed to send OTP. Please try again.",
@@ -98,14 +104,14 @@ export async function POST(req: Request) {
           const otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
           await conn.query(
-            "UPDATE users SET otp = ?, otp_expires_at = ? WHERE id = ?",
-            [generatedOtp, otpExpiresAt, tempUserId]
+            "UPDATE users SET otp = ?, otp_expires_at = ? WHERE uid = ?",
+            [generatedOtp, otpExpiresAt, uid]
           );
 
           return NextResponse.json(
             {
               message: "OTP sent successfully to your phone",
-              tempUserId,
+              tempUserUid: uid,
               success: true,
             },
             { status: 200 }
@@ -113,7 +119,7 @@ export async function POST(req: Request) {
         } catch (error: any) {
           console.error("OTP sending error:", error);
           // Delete the temporary user if OTP fails
-          await conn.query("DELETE FROM users WHERE id = ?", [tempUserId]);
+          await conn.query("DELETE FROM users WHERE uid = ?", [uid]);
           return NextResponse.json(
             {
               message: "Failed to send OTP. Please check your phone number.",
@@ -125,7 +131,28 @@ export async function POST(req: Request) {
       }
 
       // Step 2: Verify OTP and complete registration
-      else if (otp && tempUserId) {
+      else if (otp) {
+        // Fallback: allow verification by phone if no temp UID was provided
+        if (!verificationUid && phone) {
+          const [byPhone]: any = await conn.query(
+            "SELECT uid FROM users WHERE phone = ?",
+            [phone]
+          );
+
+          if (byPhone.length > 0) {
+            verificationUid = byPhone[0].uid;
+          }
+        }
+
+        if (!verificationUid) {
+          return NextResponse.json(
+            {
+              message: "Missing temp user identifier. Include tempUserUid or phone with the OTP.",
+              success: false,
+            },
+            { status: 400 }
+          );
+        }
         // Validate OTP format
         if (!String(otp) || otp.toString().length !== 6) {
           return NextResponse.json(
@@ -136,8 +163,8 @@ export async function POST(req: Request) {
 
         // Get temporary user by ID
         const [rows]: any = await conn.query(
-          "SELECT * FROM users WHERE id = ?",
-          [tempUserId]
+          "SELECT * FROM users WHERE uid = ?",
+          [verificationUid]
         );
 
         if (rows.length === 0) {
@@ -176,8 +203,8 @@ export async function POST(req: Request) {
 
         // Mark user as verified and clear OTP
         await conn.query(
-          "UPDATE users SET status = 1, otp = NULL, otp_expires_at = NULL WHERE id = ?",
-          [tempUserId]
+          "UPDATE users SET status = 1, otp = NULL, otp_expires_at = NULL WHERE uid = ?",
+          [verificationUid]
         );
 
         // Generate full name from first_name and last_name
@@ -187,7 +214,7 @@ export async function POST(req: Request) {
 
         // Generate JWT token and log user in
         const tokenPayload = {
-          id: user.id,
+          uid: (user as any).uid,
           name: fullName,
           email: user.email || null,
           mobile: user.phone,
@@ -201,7 +228,7 @@ export async function POST(req: Request) {
             success: true,
             message: "Registration successful! You are now logged in.",
             user: {
-              id: user.id,
+              uid: user.uid,
               name: fullName,
               email: user.email,
               phone: user.phone,
@@ -213,13 +240,17 @@ export async function POST(req: Request) {
         );
 
         // Set secure cookie with JWT token
-        response.cookies.set("__auth_token__", token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
-          maxAge: 60 * 60 * 24 * 30, // 30 days
-          path: "/",
-        });
+        response.cookies.set(
+          COOKIE_OPTIONS.AUTH_TOKEN.name,
+          token,
+          {
+            httpOnly: COOKIE_OPTIONS.AUTH_TOKEN.httpOnly,
+            secure: COOKIE_OPTIONS.AUTH_TOKEN.secure,
+            sameSite: COOKIE_OPTIONS.AUTH_TOKEN.sameSite,
+            maxAge: COOKIE_OPTIONS.AUTH_TOKEN.maxAge,
+            path: COOKIE_OPTIONS.AUTH_TOKEN.path,
+          }
+        );
 
         return response;
       }
@@ -227,7 +258,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           message:
-            "Invalid request. Provide phone, first_name, last_name (to send OTP) or otp+tempUserId (to verify)",
+            "Invalid request. Provide phone, first_name, last_name (to send OTP) or otp plus tempUserUid/phone (to verify)",
           success: false,
         },
         { status: 400 }

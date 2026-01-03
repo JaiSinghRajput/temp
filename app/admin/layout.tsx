@@ -25,12 +25,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       if (!user) {
         // Not authenticated, redirect to admin login
         router.push('/admin/login');
+      } else if (user.role === 'editor') {
+        const allowedPrefix = '/admin/e-video/requests';
+        if (!pathname.startsWith(allowedPrefix)) {
+          router.push(allowedPrefix);
+        }
       } else if (user.role !== 'admin' && user.role !== 'super_admin') {
         // Not an admin, redirect to home
         router.push('/');
       }
     }
-  }, [user, loading, router, isLoginPage]);
+  }, [user, loading, router, isLoginPage, pathname]);
 
   // Show login page without auth check or sidebar
   if (isLoginPage) {

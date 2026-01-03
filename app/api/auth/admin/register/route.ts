@@ -36,9 +36,9 @@ export async function POST(req: Request) {
       }
 
       // Validate role
-      if (!["admin", "super_admin"].includes(role)) {
+      if (!["admin", "editor"].includes(role)) {
         return NextResponse.json(
-          { message: "Invalid role. Must be 'admin' or 'super_admin'", success: false },
+          { message: "Invalid role. Must be 'admin' or 'editor'", success: false },
           { status: 400 }
         );
       }
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
         name,
         email,
         password: hashedPassword,
-        role: role as "admin" | "super_admin",
+        role: role as "admin" | "editor",
       };
 
       return NextResponse.json(
@@ -96,30 +96,3 @@ export async function POST(req: Request) {
     }
   );
 }
-
-/**
- * POST /api/auth/admin/register
- *
- * Admin registration endpoint (no verification needed)
- * Note: This should be protected and only accessible to super admins or during initial setup
- *
- * Request body:
- * {
- *   "name": "Admin Name",
- *   "email": "admin@example.com",
- *   "password": "securePassword123",
- *   "role": "admin" // optional, defaults to "admin"
- * }
- *
- * Response:
- * {
- *   "success": true,
- *   "message": "Admin registered successfully",
- *   "user": {
- *     "id": 1,
- *     "name": "Admin Name",
- *     "email": "admin@example.com",
- *     "role": "admin"
- *   }
- * }
- */

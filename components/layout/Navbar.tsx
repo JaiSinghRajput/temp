@@ -47,8 +47,8 @@ const Navbar: React.FC = () => {
                 {/* Center Menu */}
                 <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-700 tracking-wide">
                     <NavbarDropdown label="E-Card" items={eCardMenu} />
-                    <Link href="/invitation-video" className="hover:text-[#d18b47] transition uppercase">
-                        Invitation Video
+                    <Link href="/e-videos" className="hover:text-[#d18b47] transition uppercase">
+                        E-Video
                     </Link>
                 </nav>
 

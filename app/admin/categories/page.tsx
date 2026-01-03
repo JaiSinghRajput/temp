@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { categoryService } from '@/services';
 
 interface Category {
   id: number;
@@ -25,8 +26,7 @@ export default function CategoriesPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch("/api/categories");
-      const json = await res.json();
+      const json = await categoryService.getCategories();
       if (json.success) setCategories(json.data);
     } finally {
       setLoading(false);
@@ -39,16 +39,11 @@ export default function CategoriesPage() {
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/categories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || null,
-        }),
-      });
+      const json = await categoryService.createCategory({
+        name: name.trim(),
+        description: description.trim() || null,
+      } as any);
 
-      const json = await res.json();
       if (json.success) {
         setName("");
         setDescription("");
@@ -65,8 +60,7 @@ export default function CategoriesPage() {
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this category?")) return;
 
-    const res = await fetch(`/api/categories/${id}`, { method: "DELETE" });
-    const json = await res.json();
+    const json = await categoryService.deleteCategory(id);
     if (json.success) fetchCategories();
   };
 

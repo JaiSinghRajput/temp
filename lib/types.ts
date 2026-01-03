@@ -41,6 +41,7 @@ export interface Template {
   background_id?: number;
   cloudinary_public_id?: string;
   canvas_data: CanvasData;
+  color?: string | null;
   // Multi-page support
   is_multipage?: boolean;
   pages?: TemplatePage[];
@@ -75,7 +76,7 @@ export interface ApiResponse<T = any> {
 export interface UserEcard {
   id: number;
   template_id: number;
-  user_id?: number | null;
+  user_id?: string | null;
   user_name?: string | null;
   customized_data: any;
   preview_url: string;
@@ -83,12 +84,37 @@ export interface UserEcard {
   public_slug?: string;
   created_at?: string;
   updated_at?: string;
+   category_slug?: string | null;
+   subcategory_slug?: string | null;
+   payment_status?: 'pending' | 'paid' | null;
+   payment_order_id?: string | null;
+   payment_id?: string | null;
+   payment_signature?: string | null;
+  payment_amount?: number | null;
+  pricing_type?: 'free' | 'premium';
+  price?: number | null;
 }
 
 export interface Category {
   id: number;
   name: string;
   description?: string | null;
+}
+
+export interface VideoCategory {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string | null;
+  status?: boolean | number;
+}
+
+export interface VideoSubcategory {
+  id: number;
+  category_id: number;
+  name: string;
+  slug: string;
+  status?: boolean | number;
 }
 
 export interface FontCdnLink {
@@ -109,13 +135,13 @@ export interface Admin {
   name: string;
   email: string;
   password: string;
-  role: 'admin' | 'super_admin';
+  role: 'admin' | 'super_admin' | 'editor';
   created_at?: string;
   updated_at?: string;
 }
 
 export interface User {
-  id: number;
+  uid: string;
   phone: string;
   email?: string;
   first_name?: string;
@@ -128,17 +154,90 @@ export interface User {
 }
 
 export interface AuthedUser {
-  id: number;
+  uid: string;
+  name: string;
+  email?: string | null;
+  mobile?: string | null;
+  role: string;
+  id?: string; // legacy
+}
+
+export interface AuthPayload {
+  id?: number;
+  uid?: string;
   name: string;
   email?: string | null;
   mobile?: string | null;
   role: string;
 }
 
-export interface AuthPayload {
-  id: number;
+export type VideoInviteFieldType =
+  | 'text'
+  | 'textarea'
+  | 'email'
+  | 'phone'
+  | 'date'
+  | 'select'
+  | 'file'
+  | 'url';
+
+export interface VideoInviteField {
+  id?: number;
+  template_id: number;
   name: string;
-  email?: string | null;
-  mobile?: string | null;
-  role: string;
+  label: string;
+  field_type: VideoInviteFieldType;
+  required?: boolean;
+  helper_text?: string | null;
+  options?: string[] | null;
+  sort_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface VideoInviteTemplate {
+  id: number;
+  title: string;
+  slug: string;
+  description?: string | null;
+  preview_video_url: string;
+  preview_video_public_id?: string | null;
+  preview_thumbnail_url?: string | null;
+  category_id?: number | null;
+  subcategory_id?: number | null;
+  category_name?: string | null;
+  subcategory_name?: string | null;
+  category_slug?: string | null;
+  subcategory_slug?: string | null;
+  is_active?: boolean;
+  price?: number | null;
+  cards?: VideoInviteCard[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface VideoInviteCard {
+  id: number;
+  template_id: number;
+  card_image_url?: string | null;
+  card_image_public_id?: string | null;
+  sort_order?: number;
+  fields?: VideoInviteField[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface VideoInviteRequest {
+  id: number;
+  template_id: number;
+  card_id?: number | null;
+  user_id?: string | null;
+  requester_name: string;
+  requester_email?: string | null;
+  requester_phone?: string | null;
+  payload: Record<string, any>;
+  status: 'new' | 'in_progress' | 'done' | 'cancelled';
+  admin_notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
