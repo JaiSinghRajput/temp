@@ -14,9 +14,11 @@ const safeParse = <T>(value: any, fallback: T): T => {
   }
 };
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   try {
     const { slug } = await params;
+    const { searchParams } = new URL(req.url);
+    const includeInactive = searchParams.get('includeInactive') === '1';
     const [templates] = await pool.query<RowDataPacket[]>(
       `SELECT 
          t.*, 
@@ -27,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ slu
        FROM e_video_templates t
        LEFT JOIN video_categories vc ON vc.id = t.category_id
        LEFT JOIN video_subcategories vsc ON vsc.id = t.subcategory_id
-       WHERE t.slug = ? AND t.is_active = TRUE
+      WHERE t.slug = ? ${includeInactive ? '' : 'AND t.is_active = TRUE'}
        LIMIT 1`,
       [slug]
     );

@@ -1,4 +1,7 @@
+"use client";
+
 import React from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export interface DropdownItem {
@@ -12,6 +15,11 @@ interface NavbarDropdownProps {
 }
 
 const NavbarDropdown: React.FC<NavbarDropdownProps> = ({ label, items }) => {
+  const router = useRouter();
+
+  const handleNavigate = (href: string) => {
+    router.push(href);
+  };
   return (
     <div className="relative group">
       {/* Trigger */}
@@ -32,10 +40,11 @@ const NavbarDropdown: React.FC<NavbarDropdownProps> = ({ label, items }) => {
         <ul className="flex flex-col text-sm text-gray-800">
           {items.map((item, index) => (
             <li key={index}>
-              <Link
-                href={item.href}
+              <button
+                onClick={() => handleNavigate(item.href)}
                 className="
                   group/item
+                  w-full text-left
                   flex items-center gap-3
                   px-4 py-3
                   transition-all duration-200 ease-out
@@ -57,7 +66,7 @@ const NavbarDropdown: React.FC<NavbarDropdownProps> = ({ label, items }) => {
                 </span>
 
                 <span>{item.label}</span>
-              </Link>
+              </button>
             </li>
           ))}
         </ul>

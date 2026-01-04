@@ -39,44 +39,89 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
     || template.pages?.[0]?.imageUrl
     || '';
 
-  return (
-    <div className="bg-white border rounded-2xl shadow-sm overflow-hidden">
-      <div className="relative w-full" style={{ aspectRatio: '4 / 5', background: '#f3e4d6' }}>
-        {previewSrc ? (
-          <img
-            src={previewSrc}
-            alt={template.name}
-            className="w-full h-full object-contain"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-400">No preview</div>
-        )}
-        <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/90 text-xs font-semibold border">Preview</span>
+ return (
+  <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="grid grid-cols-1 gap-10">
+      
+      {/* PREVIEW */}
+      <div className="relative">
+        <div
+          className="
+            sticky top-24
+            rounded-3xl
+            bg-[#f3e4d6]
+            overflow-hidden
+            shadow-sm
+          "
+          style={{ aspectRatio: '4 / 5' }}
+        >
+          {previewSrc ? (
+            <img
+              src={previewSrc}
+              alt={template.name}
+              className="w-full h-full object-contain"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-400">
+              No preview
+            </div>
+          )}
+
+          <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/90 text-xs font-semibold border">
+            Preview
+          </span>
+        </div>
       </div>
 
-      <div className="p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-900">{template.name}</h2>
-          {template.description && (
-            <p className="text-sm text-gray-600 mt-2 max-w-2xl">{template.description}</p>
-          )}
-        </div>
+      {/* DETAILS */}
+      <div className="flex flex-col justify-start pt-2">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900 leading-tight">
+          {template.name}
+        </h1>
 
-        <div className="flex flex-wrap gap-3">
+        {template.description && (
+          <p className="text-base text-gray-600 mt-4 max-w-xl">
+            {template.description}
+          </p>
+        )}
+
+        {/* CTA */}
+        <div className="mt-8 flex flex-col sm:flex-row gap-4">
           <Link
             href={`/e-card/customize/${template.id}`}
-            className="px-5 py-2.5 rounded-lg bg-[#d18b47] text-white font-semibold hover:bg-[#c07c3c] transition"
+            className="
+              p-2 py-2.5
+              rounded-xl
+              bg-[#d18b47]
+              text-white
+              font-semibold
+              text-center
+              hover:bg-[#c07c3c]
+              transition
+            "
           >
-            Customize
+            Customize Card
           </Link>
+
           <Link
             href="/e-card"
-            className="px-5 py-2.5 rounded-lg border border-gray-200 text-gray-800 font-semibold hover:border-gray-300 transition"
+            className="
+              p-2 py-2.5
+              rounded-xl
+              border border-gray-300
+              text-gray-800
+              font-semibold
+              text-center
+              hover:border-gray-400
+              transition
+            "
           >
             Back to catalog
           </Link>
         </div>
       </div>
     </div>
-  );
+  </div>
+);
+
 }

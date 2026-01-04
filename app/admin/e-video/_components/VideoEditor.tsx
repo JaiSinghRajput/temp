@@ -218,6 +218,7 @@ export default function VideoEditor({
 
         try {
             const payload = {
+                ...(mode === 'edit' ? { id: initialData?.id } : {}),
                 title,
                 description: description || null,
                 price: priceValue,
@@ -249,13 +250,19 @@ export default function VideoEditor({
                 })),
             };
 
+            if (mode === 'edit' && !payload.id) {
+                setError('Missing template id for update');
+                setSubmitting(false);
+                return;
+            }
+
             if (onSave) {
                 await onSave(payload);
                 return;
             }
 
             const method = mode === 'create' ? 'POST' : 'PUT';
-            const url = mode === 'create' ? '/api/e-video/templates' : `/api/e-video/templates/${templateId}`;
+            const url = '/api/e-video/templates';
 
             const res = await axiosInstance({
                 method,
@@ -265,6 +272,7 @@ export default function VideoEditor({
 
             if (res.data.success) {
                 router.push('/admin/e-video');
+                router.refresh();
             } else {
                 setError(res.data.error || `Failed to ${mode === 'create' ? 'create' : 'update'} e-video`);
             }

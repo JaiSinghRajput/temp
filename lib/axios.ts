@@ -35,10 +35,27 @@ axiosInstance.interceptors.response.use(
     return response;
   },
   (error) => {
+    const status = error.response?.status;
+    const url = error.config?.url || '';
+
+    // For the token verification endpoint, a 401 simply means unauthenticated; return a resolved response
+    if (status === 401 && url.includes('/api/auth/verify')) {
+      return Promise.resolve({
+        data: { success: false, message: 'Not authenticated' },
+        status,
+        statusText: error.response?.statusText || 'Unauthorized',
+        headers: error.response?.headers || {},
+        config: error.config,
+      });
+    }
+
     // Extract error data properly
     if (error.response?.data) {
-      // Don't do hard redirect here - let the service/component handle auth errors
-      return Promise.reject(error.response.data);
+      const errorData = {
+        ...error.response.data,
+        status,
+      };
+      return Promise.reject(errorData);
     }
     
     // For network errors or other issues

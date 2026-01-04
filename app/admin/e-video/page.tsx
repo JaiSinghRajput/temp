@@ -97,7 +97,7 @@ export default function AdminEVideoListPage() {
                 >
                   {/* Video preview */}
                   <div className="relative bg-black flex justify-center border-b">
-                    <div className="w-full max-w-[220px] aspect-[9/16] max-h-[360px]">
+                    <div className="w-full max-w-55 aspect-9/16 max-h-90">
                       <video
                         src={tmpl.preview_video_url}
                         poster={poster}

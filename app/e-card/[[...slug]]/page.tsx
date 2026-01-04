@@ -54,7 +54,7 @@ export default function ECardHomePage() {
     const [activeSubcategory, setActiveSubcategory] = useState<string | undefined>(initialSlugs.subcategorySlug);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [viewMode, setViewMode] = useState<'list' | 'detail'>(initialIsDetail ? 'detail' : 'list');
+    const [viewMode, setViewMode] = useState<'list' | 'detail' | 'published'>(initialIsDetail ? 'detail' : 'list');
     const [templateDetail, setTemplateDetail] = useState<Template | null>(null);
     const [publishedCard, setPublishedCard] = useState<UserEcard | null>(null);
 
@@ -98,10 +98,23 @@ export default function ECardHomePage() {
                     setActiveSubcategory(undefined);
                     loadTemplates(categoryMatch.id, undefined, categories, subcategories);
                 } else {
-                    setViewMode('detail');
-                    setActiveCategory(undefined);
+                    // Show list view filtered by category slug even if category doesn't exist in DB
+                    setViewMode('list');
+                    setTemplateDetail(null);
+                    setActiveCategory(parts[0]);
                     setActiveSubcategory(undefined);
-                    fetchTemplateDetail(parts[0]);
+                    setCategories(categories.map((cat: any) => ({
+                        ...cat,
+                        slug: cat.slug || slugify(cat.name || ''),
+                        subcategories: (subcategories || [])
+                            .filter((sub: any) => sub.category_id === cat.id)
+                            .map((sub: any) => ({
+                                ...sub,
+                                slug: sub.slug || slugify(sub.name || ''),
+                            })),
+                    })));
+                    loadTemplates(undefined, undefined, categories, subcategories);
+                    setLoading(false);
                 }
             } else if (parts.length === 2) {
                 const categoryMatch = categories.find((c: any) => 
@@ -218,16 +231,22 @@ export default function ECardHomePage() {
                 if (template) {
                     setTemplateDetail(template);
                 } else {
+                    // Redirect to list view instead of showing error
+                    setViewMode('list');
                     setTemplateDetail(null);
-                    setError('Card not found');
+                    router.push('/e-card');
                 }
             } else {
+                // Redirect to list view instead of showing error
+                setViewMode('list');
                 setTemplateDetail(null);
-                setError('Card not found');
+                router.push('/e-card');
             }
         } catch {
+            // Redirect to list view instead of showing error
+            setViewMode('list');
             setTemplateDetail(null);
-            setError('Something went wrong');
+            router.push('/e-card');
         } finally {
             setLoading(false);
         }
@@ -243,12 +262,16 @@ export default function ECardHomePage() {
             if (json.success && json.data) {
                 setPublishedCard(json.data as UserEcard);
             } else {
+                // Redirect to list view instead of showing error
+                setViewMode('list');
                 setPublishedCard(null);
-                setError('Card not found');
+                router.push('/e-card');
             }
         } catch {
+            // Redirect to list view instead of showing error
+            setViewMode('list');
             setPublishedCard(null);
-            setError('Something went wrong');
+            router.push('/e-card');
         } finally {
             setLoading(false);
         }

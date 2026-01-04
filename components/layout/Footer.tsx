@@ -1,5 +1,8 @@
-import React from "react";
+'use client';
 
+import React from 'react';
+import Link from 'next/link';
+import { FaFacebookF, FaInstagram, FaPinterestP } from 'react-icons/fa';
 const Footer: React.FC = () => {
   return (
     <footer className="bg-[#fff5f1] text-gray-600">
@@ -29,9 +32,18 @@ const Footer: React.FC = () => {
         <div>
           <h3 className="text-lg font-semibold mb-4">Links.</h3>
           <ul className="space-y-2 text-sm">
-            <li className="hover:text-[#d18b47] cursor-pointer">E-Card</li>
-            <li className="hover:text-[#d18b47] cursor-pointer">
-              Invitation Video
+            <li>
+              <Link href="/e-card" className="hover:text-[#d18b47] transition">
+                E-Card
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/e-videos"
+                className="hover:text-[#d18b47] transition"
+              >
+                Invitation Video
+              </Link>
             </li>
           </ul>
         </div>
@@ -42,17 +54,37 @@ const Footer: React.FC = () => {
             Some Important Links
           </h3>
           <ul className="space-y-2 text-sm">
-            <li className="hover:text-[#d18b47] cursor-pointer">
-              Return Policy
+            <li>
+              <Link
+                href="/return-policy"
+                className="hover:text-[#d18b47] transition"
+              >
+                Return Policy
+              </Link>
             </li>
-            <li className="hover:text-[#d18b47] cursor-pointer">
-              Refund Policy
+            <li>
+              <Link
+                href="/refund-policy"
+                className="hover:text-[#d18b47] transition"
+              >
+                Refund Policy
+              </Link>
             </li>
-            <li className="hover:text-[#d18b47] cursor-pointer">
-              Terms & Condition
+            <li>
+              <Link
+                href="/terms-conditions"
+                className="hover:text-[#d18b47] transition"
+              >
+                Terms & Conditions
+              </Link>
             </li>
-            <li className="hover:text-[#d18b47] cursor-pointer">
-              Sign in
+            <li>
+              <Link
+                href="/login"
+                className="hover:text-[#d18b47] transition"
+              >
+                Sign in
+              </Link>
             </li>
           </ul>
         </div>
@@ -66,17 +98,38 @@ const Footer: React.FC = () => {
             digital invitations and memorable gifts.
           </p>
 
-          {/* Social Icons */}
           <div className="flex space-x-3">
-            {["f", "in", "p"].map((icon) => (
-              <div
-                key={icon}
-                className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-400 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] cursor-pointer transition"
-              >
-                {icon}
-              </div>
-            ))}
+            <a
+              href="https://facebook.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Facebook"
+              className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
+            >
+              <FaFacebookF size={14} />
+            </a>
+
+            <a
+              href="https://instagram.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Instagram"
+              className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
+            >
+              <FaInstagram size={16} />
+            </a>
+
+            <a
+              href="https://pinterest.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Pinterest"
+              className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
+            >
+              <FaPinterestP size={16} />
+            </a>
           </div>
+
         </div>
       </div>
 
@@ -84,14 +137,14 @@ const Footer: React.FC = () => {
       <div className="border-t border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-gray-500">
-            ©2025 CopyRight Dream Wedding Hub. All rights reserved.
+            ©2025 Copyright Dream Wedding Hub. All rights reserved.
           </p>
 
           {/* Payment Icons */}
           <div className="flex items-center gap-3">
-            {["VISA", "Mastercard", "AMEX"].map((card, i) => (
+            {['VISA', 'Mastercard', 'AMEX'].map((card) => (
               <div
-                key={i}
+                key={card}
                 className="px-3 py-2 bg-white rounded shadow text-xs font-semibold text-gray-600"
               >
                 {card}

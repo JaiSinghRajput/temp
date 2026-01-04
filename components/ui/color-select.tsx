@@ -44,29 +44,60 @@ export function ColorSelect({
 
   const allOption = includeAll ? [{ label: allLabel, value: 'all' } as ColorOption] : [];
   const renderedOptions = [...allOption, ...options];
-
   return (
     <div className={cn('relative', className)} ref={wrapperRef}>
+      {/* Trigger */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          'w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500',
+          `
+        w-full flex items-center justify-between gap-3
+        px-3 py-1.5 rounded-lg
+        border border-gray-200
+        bg-[#fcfcfb]
+        text-sm text-gray-900
+        shadow-sm
+        transition
+        hover:border-gray-300
+        focus:outline-none focus:ring-1 focus:ring-[#d18b47]/40
+        `,
           selectClassName
         )}
       >
-        <span className="flex items-center gap-2">
-          <span className="w-4 h-4 rounded-full border" style={{ backgroundColor: swatch }} />
-          <span>{displayLabel}</span>
+        <span className="flex items-center gap-2 min-w-0">
+          <span
+            className="w-4 h-4 rounded-full border border-gray-300 shrink-0"
+            style={{ backgroundColor: swatch }}
+          />
+          <span className="truncate">{displayLabel}</span>
         </span>
-        <span className="text-gray-400 text-xs">▾</span>
+
+        <span
+          className={cn(
+            'text-gray-400 text-xs transition-transform',
+            open && 'rotate-180'
+          )}
+        >
+          ▾
+        </span>
       </button>
 
+      {/* Dropdown */}
       {open && (
-        <div className="absolute z-20 mt-2 w-full rounded-lg border border-gray-200 bg-white shadow-lg">
+        <div
+          className="
+          absolute z-30 mt-2 w-full
+          rounded-xl
+          border border-gray-200
+          bg-[#fcfcfb]
+          shadow-[0_10px_30px_rgba(0,0,0,0.08)]
+        "
+        >
           <ul className="max-h-64 overflow-auto py-2">
             {renderedOptions.map((opt) => {
               const isActive = opt.value === value;
+
               return (
                 <li key={opt.value}>
                   <button
@@ -76,12 +107,30 @@ export function ColorSelect({
                       setOpen(false);
                     }}
                     className={cn(
-                      'w-full flex items-center gap-3 px-3 py-2 text-sm text-left hover:bg-gray-50',
-                      isActive ? 'bg-blue-50 text-blue-800' : 'text-gray-800'
+                      `
+                    group w-full flex items-center gap-3
+                    px-3 py-2 text-sm text-left
+                    transition
+                    `,
+                      isActive
+                        ? 'bg-[#d18b47]/10 text-[#d18b47] font-medium'
+                        : 'text-gray-800 hover:bg-gray-100'
                     )}
                   >
-                    <span className="w-4 h-4 rounded-full border" style={{ backgroundColor: opt.value !== 'all' ? opt.value : '#ffffff' }} />
-                    <span>{opt.label}</span>
+                    {/* Swatch */}
+                    <span
+                      className={cn(
+                        'w-4 h-4 rounded-full border border-gray-300',
+                        isActive && 'ring-2 ring-[#d18b47]/40'
+                      )}
+                      style={{
+                        backgroundColor:
+                          opt.value !== 'all' ? opt.value : '#ffffff',
+                      }}
+                    />
+
+                    {/* Label */}
+                    <span className="truncate">{opt.label}</span>
                   </button>
                 </li>
               );
@@ -90,5 +139,6 @@ export function ColorSelect({
         </div>
       )}
     </div>
-  );
+  )
+
 }

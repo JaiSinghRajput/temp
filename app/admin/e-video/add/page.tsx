@@ -1,5 +1,6 @@
 'use client';
 import VideoEditor from '../_components/VideoEditor';
+
 export default function CreateEVideoPage() {
   return (
     <VideoEditor
@@ -7,5 +8,5 @@ export default function CreateEVideoPage() {
       onCancel={() => window.history.back()}
     />
   );
-};
+}
 

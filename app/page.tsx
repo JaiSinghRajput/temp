@@ -6,7 +6,9 @@ import { Template } from '@/lib/types';
 import { templateService, videoService } from '@/services';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-
+import VideoCard from '@/components/Home/VideoCard';
+import { motion } from 'framer-motion';
+import EmailBanner from '@/components/Home/EmailBanner';
 interface VideoTemplate {
   id: number;
   title: string;
@@ -16,6 +18,7 @@ interface VideoTemplate {
   preview_thumbnail_url?: string;
   category_id?: number;
   is_active: boolean;
+  price?: number;
 }
 
 export default function Home() {
@@ -32,7 +35,7 @@ export default function Home() {
         if (result.success && Array.isArray(result.data)) {
           setTemplates(result.data);
         }
-        
+
         // Fetch e-videos
         const videoResult = await videoService.getVideoTemplates();
         if (videoResult.success && Array.isArray(videoResult.data)) {
@@ -70,6 +73,11 @@ export default function Home() {
         image: v.preview_thumbnail_url || '',
         title: v.title,
         link: `/e-video/${v.slug}`,
+        price: (() => {
+          if (v.price === null || typeof v.price === 'undefined') return 0;
+          const parsed = Number(v.price);
+          return Number.isFinite(parsed) ? parsed : 0;
+        })(),
       }))
       .filter((item) => item.image || item.title);
   }, [videoTemplates]);
@@ -84,34 +92,45 @@ export default function Home() {
       </div>
     );
   }
-
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-
   return (
-    <main className="min-h-screen bg-white">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
-        <HeroSection />
-
-        {carouselItems.length > 0 && (
-          <section>
-            <SmoothCarousel
-              items={carouselItems}
-              visibleItems={5}
-              title="Best E-Cards"
-            />
-          </section>
-        )}
-
+    <main className="min-h-screen bg-white w-full">
+      <HeroSection className="bg-blue-50" />
+      <section className='bg-red-50 py-10'>
         {videoCarouselItems.length > 0 && (
-          <section>
-            <SmoothCarousel
-              items={videoCarouselItems}
-              visibleItems={5}
-              title="Video Invitations"
-            />
-          </section>
+          <>
+            <motion.h2
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className='text-2xl font-semibold text-center mb-3'
+            >
+              <span className="border-b-2 border-b-red-300 px-2">Video Invitations</span>
+            </motion.h2>
+            <section className='w-full'>
+              <div className='flex justify-center gap-4'>
+                {videoCarouselItems.map((item) => (
+                  <VideoCard
+                    key={item.id}
+                    image={item.image}
+                    name={item.title || "Video Invitation"}
+                    price={item.price}
+                  />
+                ))}
+              </div>
+            </section>
+          </>
         )}
-      </div>
-    </main>
+      </section>
+      <section className="py-10 bg-amber-50">
+        {carouselItems.length > 0 && (
+          <SmoothCarousel
+            items={carouselItems}
+            visibleItems={5}
+            title="Best E-Cards"
+          />
+        )}
+      </section>
+      <EmailBanner />
+    </main >
   );
 }

@@ -62,9 +62,6 @@ const SmoothCarousel: React.FC<SmoothCarouselProps> = ({
                 alt={item.title || "carousel item"}
                 className="w-60 h-auto rounded-md shadow-md mx-auto"
               />
-              {item.title && (
-                <p className="mt-2 text-center text-sm text-gray-700">{item.title}</p>
-              )}
             </Link>
           </div>
         ))}

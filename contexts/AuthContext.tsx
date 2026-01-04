@@ -35,16 +35,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (data.success && data.user) {
         setUser(data.user);
-      } else if (data.message?.toLowerCase().includes('token')) {
-        // Token invalid/expired: clear user only if we have no prior user
-        setUser((prev) => (prev ? prev : null));
       } else {
-        // Keep prior user on transient errors
-        setUser((prev) => (initialized ? prev : null));
+        // Token invalid/expired or user not authenticated - clear user state
+        setUser(null);
       }
     } catch (error: any) {
-      // On verification failure keep existing user to avoid sudden logout on transient errors
+      // On unexpected errors, clear user if not initialized yet
       if (!initialized) setUser(null);
+      console.error('Error verifying token:', error);
     } finally {
       setInitialized(true);
       setLoading(false);

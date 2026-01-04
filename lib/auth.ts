@@ -73,10 +73,8 @@ export function withAdminAuth(handler: (req: AuthenticatedRequest) => Promise<Ne
     }
 
     if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
-      return NextResponse.json(
-        { success: false, message: 'Insufficient permissions: Admin access required' },
-        { status: 403 }
-      );
+      // Redirect non-admin users to home instead of throwing an error
+      return NextResponse.redirect(new URL('/', req.url));
     }
 
     return handler(req);

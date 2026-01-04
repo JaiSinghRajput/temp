@@ -77,6 +77,10 @@ export const authService = {
       });
       return response.data;
     } catch (error: any) {
+      // 401 errors are expected when user is not authenticated - don't treat as error
+      if (error?.status === 401 || error?.message?.toLowerCase().includes('token')) {
+        return { success: false, message: error?.message || 'Not authenticated' };
+      }
       return getErrorMessage(error);
     }
   },

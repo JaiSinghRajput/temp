@@ -345,7 +345,9 @@ export default function EVideosPage() {
             </span>
           </div>
           <div className="mt-4 text-center text-gray-800 font-semibold">
-            {detailTemplate.price ? `Price: ₹${detailTemplate.price}` : "Price not set"}
+            {detailTemplate.price ?? detailTemplate.price === 0
+              ? `Price: ₹${detailTemplate.price}`
+              : "Price not set"}
           </div>
         </div>
       </div>
@@ -431,7 +433,9 @@ export default function EVideosPage() {
             </div>
 
             <div className="flex items-center justify-between flex-wrap gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-              <div className="text-sm text-gray-800 font-semibold">Price: {detailTemplate.price ? `₹${detailTemplate.price}` : "Not set"}</div>
+              <div className="text-sm text-gray-800 font-semibold">
+                Price: {detailTemplate.price ?? detailTemplate.price === 0 ? `₹${detailTemplate.price}` : "Not set"}
+              </div>
               <div className="flex items-center gap-3 text-sm">
                 <label className="flex items-center gap-2 text-gray-800">
                   <input
@@ -685,9 +689,9 @@ export default function EVideosPage() {
                         <div className="space-y-1">
                           <p className="text-xs uppercase tracking-wide text-[#d18b47] font-semibold">E-Video Invite</p>
                           <h3 className="font-semibold text-gray-900 line-clamp-2">{video.title}</h3>
-                          {typeof video.price !== "undefined" && video.price !== null && (
-                            <p className="text-sm font-semibold text-gray-800">₹{video.price}</p>
-                          )}
+                          <p className="text-sm font-semibold text-gray-800">
+                            {video.price ?? video.price === 0 ? `₹${video.price}` : "Price not set"}
+                          </p>
                           {video.description && (
                             <p className="text-sm text-gray-600 line-clamp-3">{video.description}</p>
                           )}

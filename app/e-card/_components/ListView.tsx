@@ -52,16 +52,6 @@ export function ListView({
           <div className="w-12 h-12 border-4 border-[#d18b47] border-t-transparent rounded-full animate-spin mb-4" />
           <p className="text-gray-600">Loading templates…</p>
         </div>
-      ) : error ? (
-        <div className="bg-white border rounded-xl p-8 text-center">
-          <p className="text-red-600">{error}</p>
-          <button
-            onClick={onRetry}
-            className="mt-6 px-6 py-2.5 bg-[#d18b47] text-white rounded-lg font-semibold"
-          >
-            Try again
-          </button>
-        </div>
       ) : (
         <div className="space-y-20 grid lg:grid-cols-4 lg:gap-8 lg:space-y-0">
           <CategorySidebar
@@ -122,8 +112,8 @@ export function ListView({
               ))}
 
               {templates.length === 0 && (
-                <div className="col-span-full bg-white border rounded-2xl p-10 text-center text-gray-600">
-                  No templates found for this selection.
+                <div className="col-span-full rounded-2xl p-10 text-center text-gray-600">
+                  No cards matching this criteria
                 </div>
               )}
             </div>
