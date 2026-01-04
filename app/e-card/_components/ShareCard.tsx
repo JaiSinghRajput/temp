@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Canvas, Textbox } from 'fabric';
 import { TextElement, UserEcard } from '@/lib/types';
 import { loadTextOnlyCanvas } from '@/lib/text-only-canvas-renderer';
+import { useCanvasTextAnimation } from '@/hooks/useCanvasTextAnimation';
 
 interface ShareCardProps {
   card: UserEcard & {
@@ -19,6 +20,9 @@ export default function ShareCard({ card }: ShareCardProps) {
 
   const [canvasScale, setCanvasScale] = useState(0.5);
   const [error, setError] = useState('');
+
+  // Animation hook
+  const { setCanvas, animateAllTexts } = useCanvasTextAnimation();
 
   const canvasData = typeof card.customized_data === 'string'
     ? (() => {
@@ -92,6 +96,15 @@ export default function ShareCard({ card }: ShareCardProps) {
         canvas.renderAll();
         textObjectsRef.current = textObjects;
         setCanvasScale(scale);
+        
+        // Set canvas for animations
+        setCanvas(canvas);
+        
+        // Animate shared card with typewriter effect for a nice reveal
+        const textboxArray = Array.from(textObjects.values());
+        if (textboxArray.length > 0) {
+          animateAllTexts(textboxArray, 'slideInTop', 1000, 150);
+        }
       })
       .catch((err) => {
         console.error('Error loading shared card canvas:', err);

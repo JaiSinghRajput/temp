@@ -42,7 +42,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       // On unexpected errors, clear user if not initialized yet
       if (!initialized) setUser(null);
-      console.error('Error verifying token:', error);
     } finally {
       setInitialized(true);
       setLoading(false);

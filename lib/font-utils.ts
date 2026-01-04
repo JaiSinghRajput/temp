@@ -24,7 +24,6 @@ export async function loadCustomFont(font: CustomFont): Promise<void> {
     await document.fonts.load(`16px "${font.name}"`);
     await document.fonts.ready;
   } catch (err) {
-    console.error(`Failed to load font ${font.name}:`, err);
     throw err;
   }
 }

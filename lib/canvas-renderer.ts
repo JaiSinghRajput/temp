@@ -23,19 +23,15 @@ async function resolveBackgroundUrl(
   backgroundId?: number
 ): Promise<string> {
   if (imageUrl) {
-    console.log('Using direct imageUrl:', imageUrl);
     return imageUrl;
   }
 
   if (backgroundId) {
     try {
-      console.log('Resolving backgroundId:', backgroundId);
       const data = await uploadService.getBackground(String(backgroundId));
-      console.log('Resolved background URL:', data.data.cloudinary_url);
       return data.data.cloudinary_url;
     } catch (err) {
-      console.error('Error resolving background:', err);
-    }
+      }
   }
 
   throw new Error(`No imageUrl or backgroundId provided. imageUrl=${imageUrl}, backgroundId=${backgroundId}`);
@@ -56,7 +52,6 @@ export async function loadCustomFonts(fonts?: Array<{ name: string; url: string 
       try {
         await document.fonts.load(`16px "${font.name}"`);
       } catch (err) {
-        console.error(`Failed to load font ${font.name}:`, err);
       }
     }
   }
@@ -80,21 +75,17 @@ export async function loadCanvasPage({
   designSize: { width: number; height: number };
 }> {
   // Resolve background URL
-  console.log('loadCanvasPage called with:', { imageUrl, backgroundId, textElementsCount: textElements.length });
   const resolvedUrl = await resolveBackgroundUrl(imageUrl, backgroundId);
   
   if (isCancelled?.()) {
     throw new Error('Operation cancelled');
   }
   
-  console.log('Background resolved to:', resolvedUrl);
   const img = await FabricImage.fromURL(resolvedUrl, { crossOrigin: 'anonymous' });
   
   if (isCancelled?.()) {
     throw new Error('Operation cancelled');
   }
-  
-  console.log('Image loaded from Fabric:', { width: img.width, height: img.height });
   
   const imgWidth = img.width;
   const imgHeight = img.height;

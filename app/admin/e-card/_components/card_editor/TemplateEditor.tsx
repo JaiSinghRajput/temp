@@ -102,7 +102,6 @@ export default function TemplateEditor({
           setIsFontsLoading(false); // Mark fonts as loaded
         }
       } catch (err) {
-        console.error('Failed to load managed fonts', err);
         if (!cancelled) {
           setIsFontsLoading(false); // Mark as done even on error
         }
@@ -123,7 +122,6 @@ export default function TemplateEditor({
         const json = await res.json();
         if (json.success) setCategories(json.data);
       } catch (e) {
-        console.error('Failed to load categories', e);
       }
     };
     loadCategories();
@@ -138,7 +136,6 @@ export default function TemplateEditor({
         const json = await res.json();
         if (json.success) setSubcategories(json.data);
       } catch (e) {
-        console.error('Failed to load subcategories', e);
       }
     };
     if (categoryId) loadSubcategories();
@@ -182,7 +179,6 @@ export default function TemplateEditor({
       setCloudinaryPublicId(initialData.cloudinary_public_id || null);
       setIsBackgroundLoading(true);
     } else {
-      console.warn('No valid image URL found for template');
       setIsBackgroundLoading(false);
     }
   }, [mode, initialData]);
@@ -252,14 +248,12 @@ export default function TemplateEditor({
           onError: () => {
             setIsBackgroundLoading(false);
             if (templateImageUrl !== DEFAULT_TEMPLATE_IMAGE) {
-              console.error('Failed to load background image:', templateImageUrl);
               alert('Failed to load background image. Using default.');
             }
             // Don't set isContentReady here - wait for the coordinating effect
           },
         });
       } catch (err) {
-        console.error('Background loading error:', err);
         setIsBackgroundLoading(false);
         // Don't set isContentReady here - wait for the coordinating effect
       }
@@ -272,7 +266,6 @@ export default function TemplateEditor({
   useEffect(() => {
     // Only set content ready when both fonts and background are loaded
     if (!isFontsLoading && !isBackgroundLoading) {
-      console.log('Both fonts and background loaded - setting content ready');
       setIsContentReady(true);
     }
   }, [isFontsLoading, isBackgroundLoading]);
@@ -283,7 +276,6 @@ export default function TemplateEditor({
     
     // Don't load text until fonts are loaded
     if (isFontsLoading) {
-      console.log('Waiting for fonts to load before loading text elements...');
       return;
     }
 
@@ -295,23 +287,17 @@ export default function TemplateEditor({
       const uniqueFonts = Array.from(new Set(textElements.map((t: any) => t.fontFamily).filter(Boolean)));
       const fontsToLoad: CustomFont[] = [];
       
-      console.log('Loading fonts for text elements:', uniqueFonts);
-      
       // First try to find fonts in managedFonts, then in loadedCustomFonts
       for (const fontName of uniqueFonts) {
         const fontDef = managedFonts.find((f) => f.name === fontName) || loadedCustomFonts.find((f) => f.name === fontName);
         if (fontDef) {
-          console.log(`Found font definition for: ${fontName}`);
           fontsToLoad.push(fontDef);
-        } else {
-          console.warn(`Font ${fontName} not found in managed or loaded fonts`);
         }
       }
 
       // Also check if canvas_data has customFonts array
       const canvasCustomFonts = initialData.canvas_data?.customFonts || [];
       if (Array.isArray(canvasCustomFonts) && canvasCustomFonts.length > 0) {
-        console.log('Adding custom fonts from canvas_data:', canvasCustomFonts);
         for (const font of canvasCustomFonts) {
           // Check if already in fontsToLoad
           if (!fontsToLoad.some((f) => f.name === font.name)) {
@@ -323,21 +309,17 @@ export default function TemplateEditor({
       // Load fonts from CDN and wait for them to be ready
       if (fontsToLoad.length > 0) {
         try {
-          console.log('Loading custom fonts:', fontsToLoad.map((f) => f.name));
           await loadCustomFonts(fontsToLoad);
           
           // Wait for all fonts to be loaded in document
           const fontLoadPromises = fontsToLoad.map((font) =>
             document.fonts.load(`16px "${font.name}"`)
-              .catch(err => console.warn(`Failed to load font ${font.name}:`, err))
           );
           await Promise.all(fontLoadPromises);
           
           // Extra wait for document.fonts.ready
           await document.fonts.ready;
-          console.log('All fonts loaded successfully');
         } catch (err) {
-          console.error('Failed to preload fonts for text elements:', err);
         }
       }
 
@@ -425,7 +407,6 @@ export default function TemplateEditor({
         
         return; // Exit early for font changes
       } catch (err) {
-        console.error('Font application failed:', err);
         alert('Failed to load font. Please try again.');
         return;
       }
@@ -667,7 +648,6 @@ export default function TemplateEditor({
           alert('Failed to upload image');
         }
       } catch (error) {
-        console.error('Error uploading page image:', error);
         alert('Error uploading image');
       } finally {
         setIsUploadingImage(false);
@@ -780,7 +760,6 @@ export default function TemplateEditor({
         },
       });
     } catch (error) {
-      console.error('Error switching page:', error);
       alert('Error switching page');
     }
   };

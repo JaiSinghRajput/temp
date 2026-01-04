@@ -66,13 +66,10 @@ export function MultiPageCanvas({
   // Load and render canvas
   useEffect(() => {
     if (!pages?.length || !currentPage) {
-      console.warn('No pages or currentPage', { pagesLength: pages?.length, currentPage });
       onLoadingChange?.(false);
       return;
     }
     if (isInitializing.current) return;
-
-    console.log('Canvas effect triggered', { pagesLength: pages.length, currentPageIndex });
 
     // Check if we need to reload (page changed or background changed)
     const needsReload = !lastLoadedPage.current ||
@@ -81,7 +78,6 @@ export function MultiPageCanvas({
       lastLoadedPage.current.backgroundId !== currentPage.backgroundId;
 
     if (!needsReload) {
-      console.log('No reload needed');
       return;
     }
 
@@ -106,7 +102,6 @@ export function MultiPageCanvas({
         try {
           fabricCanvas.current.dispose();
         } catch (e) {
-          console.warn('Canvas dispose error:', e);
         }
         fabricCanvas.current = null;
       }
@@ -115,7 +110,6 @@ export function MultiPageCanvas({
         // Load only fonts that are actually used on this page to speed up render
         const fontsInUse = new Set<string>((currentPage.textElements || []).map((t) => t.fontFamily).filter(Boolean));
         const fontsToLoad = (customFonts || []).filter((f) => fontsInUse.has(f.name));
-        console.log('Loading fonts:', { fontsInUse: Array.from(fontsInUse), fontsToLoadCount: fontsToLoad.length });
         await loadCustomFonts(fontsToLoad);
 
         if (!isMounted) {
@@ -123,7 +117,7 @@ export function MultiPageCanvas({
           return;
         }
 
-        console.log('Creating canvas...');        // Create canvas
+        // Create canvas
         const canvas = new Canvas(canvasRef.current, {
           backgroundColor: '#ffffff',
           selection: false,
@@ -163,16 +157,6 @@ export function MultiPageCanvas({
           availableW / result.designSize.width,
           availableH / result.designSize.height
         );
-
-        console.log('Responsive scale calculated:', {
-          availableW,
-          availableH,
-          designWidth: result.designSize.width,
-          designHeight: result.designSize.height,
-          scale,
-          scaledWidth: result.designSize.width * scale,
-          scaledHeight: result.designSize.height * scale,
-        });
 
         // Set canvas to SCALED dimensions (this makes everything render at the correct size)
         canvas.setDimensions({
@@ -216,7 +200,6 @@ export function MultiPageCanvas({
           scale,
         };
         
-        console.log('Canvas loaded successfully, signaling ready');
         // Signal that canvas is loaded
         onLoadingChange?.(false);
       } catch (err) {
@@ -226,8 +209,7 @@ export function MultiPageCanvas({
         isInitializing.current = false;
       }
     };
-
-    initCanvas();
+Canvas();
     return () => {
       isMounted = false;
     };

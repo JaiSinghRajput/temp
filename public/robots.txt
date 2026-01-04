@@ -1,0 +1,16 @@
+# Allow all bots to crawl the site
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api
+Disallow: /login
+Disallow: /register
+Disallow: /*.json$
+Disallow: /*?*sort=
+Disallow: /*?*filter=
+
+# Sitemap location
+Sitemap: https://shop.dreamweddinghub.com/sitemap.xml
+
+# Crawl delay (optional)
+Crawl-delay: 1

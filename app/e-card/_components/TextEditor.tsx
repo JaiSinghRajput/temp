@@ -7,6 +7,7 @@ import {
   getUpdatedTextContent,
   loadCustomFonts,
 } from '@/lib/text-only-canvas-renderer';
+import { useCanvasTextAnimation } from '@/hooks/useCanvasTextAnimation';
 
 interface PublishPayload {
   customizedData: any;
@@ -43,6 +44,9 @@ export default function TextEditor({
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileEditor, setShowMobileEditor] = useState(false);
 
+  // Animation hook
+  const { setCanvas, animateAllTexts } = useCanvasTextAnimation();
+
   // Get text elements from canvas data
   const textElements: TextElement[] = canvasData?.textElements || [];
   const canvasWidth = canvasData?.canvasWidth || 800;
@@ -51,17 +55,13 @@ export default function TextEditor({
   // Initialize canvas
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) {
-      console.log('Canvas refs not ready');
       return;
     }
 
     if (!backgroundUrl && !backgroundId) {
-      console.error('No background URL or ID provided');
       setError('Template missing background image');
       return;
     }
-
-    console.log('Initializing canvas with:', { backgroundUrl, backgroundId, textElements: textElements.length });
 
     const container = containerRef.current;
     const width = Math.min(container.offsetWidth, 420);
@@ -101,9 +101,17 @@ export default function TextEditor({
       customFonts: canvasData?.customFonts,
     })
       .then(({ textObjects }) => {
-        console.log('Canvas loaded successfully with', textObjects.size, 'text objects');
         textObjectsRef.current = textObjects;
         setCanvasScale(scale);
+        
+        // Set canvas for animations
+        setCanvas(canvas);
+        
+        // Animate all text elements on load with fadeIn effect
+        const textboxArray = Array.from(textObjects.values());
+        if (textboxArray.length > 0) {
+          animateAllTexts(textboxArray, 'fadeIn', 800, 100);
+        }
       })
       .catch((err) => {
         console.error('Error loading canvas:', err);

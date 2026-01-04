@@ -21,21 +21,15 @@ async function resolveBackgroundUrl(
   imageUrl?: string,
   backgroundId?: number
 ): Promise<string> {
-  console.log('Resolving background URL:', { imageUrl, backgroundId });
-  
   if (imageUrl) {
-    console.log('Using direct imageUrl:', imageUrl);
     return imageUrl;
   }
 
   if (backgroundId) {
     try {
-      console.log('Fetching background from API:', backgroundId);
       const data = await uploadService.getBackground(String(backgroundId));
-      console.log('Background resolved:', data.data.cloudinary_url);
       return data.data.cloudinary_url;
     } catch (err) {
-      console.error('Error resolving background:', err);
     }
   }
 
@@ -60,7 +54,6 @@ export async function loadCustomFonts(fonts?: Array<{ name: string; url: string 
       try {
         await document.fonts.load(`16px "${font.name}"`);
       } catch (err) {
-        console.error(`Failed to load font ${font.name}:`, err);
       }
     }
   }
@@ -85,29 +78,16 @@ export async function loadTextOnlyCanvas({
   backgroundImage: FabricImage;
   textObjects: Map<string, Textbox>;
 }> {
-  console.log('loadTextOnlyCanvas called with:', {
-    imageUrl,
-    backgroundId,
-    textElementsCount: textElements?.length || 0,
-    canvasWidth,
-    canvasHeight,
-    scale,
-  });
-
   // Load custom fonts if provided
   if (customFonts) {
-    console.log('Loading custom fonts:', customFonts);
     await loadCustomFonts(customFonts);
   }
 
   // Resolve background URL
   const resolvedUrl = await resolveBackgroundUrl(imageUrl, backgroundId);
-  console.log('Resolved background URL:', resolvedUrl);
 
   // Load background image
-  console.log('Loading background image from URL...');
   const img = await FabricImage.fromURL(resolvedUrl, { crossOrigin: 'anonymous' });
-  console.log('Background image loaded:', { width: img.width, height: img.height });
 
   // Calculate scale based on canvas dimensions
   const scaleX = (canvasWidth * scale) / img.width!;
@@ -123,12 +103,10 @@ export async function loadTextOnlyCanvas({
 
   canvas.backgroundImage = img;
   canvas.renderAll();
-  console.log('Background image set on canvas');
 
   const textObjects = new Map<string, Textbox>();
 
   // Create text elements - LOCKED positions, sizes, and styles
-  console.log('Creating text elements...');
   for (const textEl of textElements) {
     const textbox = new Textbox(textEl.text, {
       id: textEl.id,
@@ -136,12 +114,10 @@ export async function loadTextOnlyCanvas({
       left: textEl.left * scale,
       top: textEl.top * scale,
       fontSize: (textEl.fontSize || 40) * scale,
-      fontFamily: textEl.fontFamily || 'Arial',
-      fontWeight: textEl.fontWeight || 'normal',
-      fill: textEl.fill || '#000000',
-      width: (textEl.width || 200) * scale,
-      textAlign: (textEl.textAlign || 'left') as any,
-      angle: textEl.angle || 0,
+
+  const textObjects = new Map<string, Textbox>();
+
+  // Create text elements - LOCKED positions, sizes, and styles
       scaleX: textEl.scaleX || 1,
       scaleY: textEl.scaleY || 1,
       // CRITICAL: Lock all properties except text content

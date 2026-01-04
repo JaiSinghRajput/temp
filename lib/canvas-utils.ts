@@ -69,7 +69,6 @@ export async function loadCanvasBackgroundImage({
     canvas.requestRenderAll();
     onSuccess?.();
   } catch (error) {
-    console.error('Failed to load image:', error);
     onError?.(error as Error);
   }
 }

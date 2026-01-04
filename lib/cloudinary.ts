@@ -36,7 +36,6 @@ export async function deleteFromCloudinary(publicId: string) {
       method: 'DELETE',
     });
   } catch (err) {
-    console.error('Failed to delete Cloudinary image:', err);
   }
 }
 
