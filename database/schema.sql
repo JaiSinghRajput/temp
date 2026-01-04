@@ -265,8 +265,12 @@ CREATE TABLE IF NOT EXISTS e_video_requests (
   requester_email VARCHAR(255) NULL,
   requester_phone VARCHAR(32) NULL,
   payload JSON NOT NULL COMMENT 'Key/value responses for defined fields',
-  status ENUM('new', 'in_progress', 'done', 'cancelled') DEFAULT 'new',
+  status ENUM('new', 'in_progress', 'done', 'cancelled', 'draft') DEFAULT 'new',
   admin_notes TEXT NULL,
+  payment_status ENUM('pending','paid') DEFAULT 'pending',
+  payment_order_id VARCHAR(255) NULL,
+  payment_id VARCHAR(255) NULL,
+  payment_signature VARCHAR(255) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (template_id) REFERENCES e_video_templates(id) ON DELETE CASCADE,
@@ -275,6 +279,7 @@ CREATE TABLE IF NOT EXISTS e_video_requests (
   INDEX idx_template (template_id),
   INDEX idx_card (card_id),
   INDEX idx_status (status),
+  INDEX idx_payment_status (payment_status),
   INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='Incoming user requests for e-Video';

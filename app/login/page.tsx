@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -12,9 +12,11 @@ import { OtpInput } from '@/components/ui/otp-input';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ProgressSteps } from '@/components/ui/progress-steps';
 import PageHeader from '@/components/layout/PageHeader';
+import { useSearchParams } from 'next/navigation';
 
-export default function UserLoginPage() {
+function UserLoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { refreshUser } = useAuth();
   const [step, setStep] = useState(1);
   const [phone, setPhone] = useState('');
@@ -43,6 +45,8 @@ export default function UserLoginPage() {
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const next = searchParams.get('next');
+    const safeNext = next && next.startsWith('/') ? next : '/';
 
     const data = await authService.verifyLoginOtp({ otp, uid: userId || '' });
 
@@ -51,9 +55,8 @@ export default function UserLoginPage() {
       // Refresh user state from cookie
       await new Promise(resolve => setTimeout(resolve, 500));
       await refreshUser();
-      // Navigate home - router.push handles the navigation smoothly
       setTimeout(() => {
-        router.push('/');
+        router.push(safeNext);
       }, 300);
     } else {
       toast.error(data.message || 'Invalid OTP');
@@ -108,5 +111,13 @@ export default function UserLoginPage() {
         </p>
       </AuthLayout>
     </div>
+  );
+}
+
+export default function UserLoginPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <UserLoginContent />
+    </Suspense>
   );
 }

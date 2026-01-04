@@ -46,7 +46,7 @@ export default function VideoDetail({ templateSlug }: { templateSlug: string }) 
   return (
     <div className="bg-[#f7f4ef] py-20 flex justify-center">
       <div className="flex flex-col items-center gap-6">
-        <div className="w-[320px] aspect-9/16 rounded-2xl overflow-hidden shadow-2xl bg-black">
+        <div className="w-[320px] aspect-9/16 rounded-2xl overflow-hidden shadow-2xl bg-black relative">
           <video
             src={template.preview_video_url}
             poster={template.preview_thumbnail_url || undefined}
@@ -55,6 +55,7 @@ export default function VideoDetail({ templateSlug }: { templateSlug: string }) 
             autoPlay
             muted
           />
+          <span className="absolute bottom-20 right-2 text-amber-200 text-2xl opacity-50 ">Dream Wedding Hub</span>
         </div>
 
         <p className="text-lg font-semibold">₹{template.price}</p>

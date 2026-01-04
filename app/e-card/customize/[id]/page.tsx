@@ -1,21 +1,31 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useParams, usePathname, useSearchParams } from 'next/navigation';
 import { Template } from '@/lib/types';
 import TextEditor from '@/app/e-card/_components/TextEditor';
 import Link from 'next/link';
-import { useAuth } from '@/contexts/AuthContext';
 import { templateService, userEcardService } from '@/services';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function CustomizeECardPage() {
   const router = useRouter();
   const params = useParams();
   const templateId = params.id as string;
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const currentPath = useMemo(() => {
+    const q = searchParams.toString();
+    return q ? `${pathname}?${q}` : pathname;
+  }, [pathname, searchParams]);
+
+  const loginHref = `/login?next=${encodeURIComponent(currentPath)}`;
+  const registerHref = `/register?next=${encodeURIComponent(currentPath)}`;
 
   const [template, setTemplate] = useState<Template | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [templateLoading, setTemplateLoading] = useState(true);
   const [error, setError] = useState('');
   const [publishing, setPublishing] = useState(false);
 
@@ -27,7 +37,7 @@ export default function CustomizeECardPage() {
 
   const fetchTemplate = async () => {
     try {
-      setLoading(true);
+      setTemplateLoading(true);
       setError('');
 
       const result = await templateService.getTemplateById(templateId);
@@ -41,11 +51,15 @@ export default function CustomizeECardPage() {
       console.error('Error fetching template:', err);
       setError('Failed to load template');
     } finally {
-      setLoading(false);
+      setTemplateLoading(false);
     }
   };
 
   const handlePublish = async ({ customizedData, previewDataUrl }: { customizedData: any; previewDataUrl?: string }) => {
+    if (!user) {
+      router.push(loginHref);
+      return;
+    }
     try {
       setPublishing(true);
       setError('');
@@ -83,7 +97,7 @@ export default function CustomizeECardPage() {
   /* -----------------------------
      LOADING STATE
   ------------------------------ */
-  if (loading) {
+  if (templateLoading || authLoading) {
     return (
       <main className="min-h-screen bg-linear-to-br from-[#faf7f4] to-[#f3e4d6] flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -91,6 +105,34 @@ export default function CustomizeECardPage() {
           <p className="text-sm text-gray-600">
             Loading your template…
           </p>
+        </div>
+      </main>
+    );
+  }
+
+  /* -----------------------------
+     AUTH GUARD
+  ------------------------------ */
+  if (!user) {
+    return (
+      <main className="min-h-screen bg-linear-to-br from-[#faf7f4] to-[#f3e4d6] flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center space-y-4">
+          <h2 className="text-xl font-semibold text-gray-900">Sign in to customize</h2>
+          <p className="text-sm text-gray-600">Please login to personalize and publish this card.</p>
+          <div className="flex justify-center gap-3">
+            <Link
+              href={loginHref}
+              className="inline-flex justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-primaryDark transition"
+            >
+              Login
+            </Link>
+            <Link
+              href={registerHref}
+              className="inline-flex justify-center rounded-lg bg-gray-100 px-6 py-2.5 text-sm font-semibold text-gray-800"
+            >
+              Register
+            </Link>
+          </div>
         </div>
       </main>
     );

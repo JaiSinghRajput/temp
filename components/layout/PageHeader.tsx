@@ -42,15 +42,15 @@ const PageHeader: React.FC<PageHeaderProps> = ({
           {breadcrumbs.map((item, index) => (
             <span key={index}>
               {item.href ? (
-                <Link href={item.href} className="hover:underline">
+                <Link href={item.href} className="hover:underline text-xl">
                   {item.label}
                 </Link>
               ) : (
-                <span className="text-black">{item.label}</span>
+                <span className="text-black text-xl">{item.label}</span>
               )}
 
               {index < breadcrumbs.length - 1 && (
-                <span className="mx-2">{">"}</span>
+                <span className="mx-2 text-xl">{">"}</span>
               )}
             </span>
           ))}

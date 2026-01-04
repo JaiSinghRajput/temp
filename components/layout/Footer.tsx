@@ -2,7 +2,8 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { FaFacebookF, FaInstagram, FaPinterestP } from 'react-icons/fa';
+import { FaFacebookF, FaInstagram, FaLinkedinIn, FaPinterestP } from 'react-icons/fa';
+import { FaXTwitter, FaYoutube } from "react-icons/fa6";
 const Footer: React.FC = () => {
   return (
     <footer className="bg-[#fff5f1] text-gray-600">
@@ -100,7 +101,7 @@ const Footer: React.FC = () => {
 
           <div className="flex space-x-3">
             <a
-              href="https://facebook.com"
+              href="https://www.facebook.com/dreamweddinghubb"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Facebook"
@@ -110,7 +111,7 @@ const Footer: React.FC = () => {
             </a>
 
             <a
-              href="https://instagram.com"
+              href="https://www.instagram.com/dreamweddinghub/"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Instagram"
@@ -120,13 +121,40 @@ const Footer: React.FC = () => {
             </a>
 
             <a
-              href="https://pinterest.com"
+              href="https://www.pinterest.com/dreamweddinghub1"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Pinterest"
               className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
             >
               <FaPinterestP size={16} />
+            </a>
+            <a
+              href="https://www.linkedin.com/company/dream-wedding-hub"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="linkedin"
+              className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
+            >
+              <FaLinkedinIn size={16} />
+            </a>
+            <a
+              href="https://x.com/dreamweddinghub"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="x"
+              className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
+            >
+              <FaXTwitter size={16} />
+            </a>
+            <a
+              href="https://www.youtube.com/@DreamWeddingHub"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="YouTube"
+              className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
+            >
+              <FaYoutube size={16} />
             </a>
           </div>
 

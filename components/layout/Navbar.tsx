@@ -17,6 +17,22 @@ const Navbar: React.FC = () => {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const initials = useMemo(() => {
+    if (!user?.name) return "U";
+    return user.name
+      .split(" ")
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+  }, [user]);
+
+
+  const isAdminLike = useMemo(() => {
+    if (!user) return false;
+    const normalized = (user.role || '').toLowerCase();
+    return normalized === 'admin' || normalized === 'super_admin' || normalized === 'editor';
+  }, [user]);
 
   const handleLogout = async () => {
     try {
@@ -96,6 +112,12 @@ const Navbar: React.FC = () => {
                 <Link href="/e-videos" onClick={() => setMenuOpen(false)}>
                   E-Video
                 </Link>
+
+                {!loading && user && !isAdminLike && (
+                  <Link href="/profile" onClick={() => setMenuOpen(false)}>
+                    Profile
+                  </Link>
+                )}
               </nav>
 
               <div className="mt-8 border-t pt-4">
@@ -152,16 +174,57 @@ const Navbar: React.FC = () => {
             </Link>
 
             {!loading && user ? (
-              <button
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50"
-              >
-                {isLoggingOut ? 'Logging out...' : 'Logout'}
-              </button>
+              <div className="relative group">
+                <div className="absolute -bottom-2 left-0 right-0 h-2" />
+                <div
+                  className="
+        h-9 w-9 rounded-full
+        bg-[#d18b47]/10 text-[#d18b47]
+        flex items-center justify-center
+        font-semibold text-sm
+        cursor-pointer
+        select-none
+      "
+                >
+                  {initials}
+                </div>
+
+                {/* Hover dropdown */}
+                <div
+                  className="
+        absolute right-0 mt-2 w-40
+        rounded-xl border border-gray-200
+        bg-white shadow-lg
+        opacity-0 invisible
+        group-hover:opacity-100 group-hover:visible
+        transition
+        z-50
+      "
+                >
+                  {!isAdminLike && (
+                    <Link
+                      href="/profile"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-t-xl"
+                    >
+                      Profile
+                    </Link>
+                  )}
+
+                  <button
+                    onClick={handleLogout}
+                    disabled={isLoggingOut}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-b-xl"
+                  >
+                    {isLoggingOut ? "Logging out…" : "Logout"}
+                  </button>
+                </div>
+              </div>
             ) : (
-              <Link href="/login">User</Link>
+              <Link href="/login" className="text-sm font-medium">
+                Login
+              </Link>
             )}
+
 
             <div className="relative">
               <Link href="/cart">

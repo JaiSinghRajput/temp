@@ -1,10 +1,8 @@
 'use client';
 import HeroSection from '@/components/Home/Hero';
 import SmoothCarousel from '@/components/ui/SmoothCarousel';
-import { useAuth } from '@/contexts/AuthContext';
 import { Template } from '@/lib/types';
 import { templateService, videoService } from '@/services';
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import VideoCard from '@/components/Home/VideoCard';
 import { motion } from 'framer-motion';
@@ -29,7 +27,6 @@ function slugify(text: string[] | null | undefined): string {
     .join('/');
 }
 export default function Home() {
-  const { user, loading } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [videoTemplates, setVideoTemplates] = useState<VideoTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
@@ -89,7 +86,7 @@ export default function Home() {
       .filter((item) => item.image || item.title);
   }, [videoTemplates]);
 
-  if (loading || templatesLoading) {
+  if (templatesLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-[#faf7f4] via-[#fdfaf7] to-[#f3e4d6]">
         <div className="text-center">

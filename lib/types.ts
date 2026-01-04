@@ -236,8 +236,16 @@ export interface VideoInviteRequest {
   requester_email?: string | null;
   requester_phone?: string | null;
   payload: Record<string, any>;
-  status: 'new' | 'in_progress' | 'done' | 'cancelled';
+  status: 'new' | 'in_progress' | 'done' | 'cancelled' | 'draft';
   admin_notes?: string | null;
+  payment_status?: 'pending' | 'paid';
+  payment_order_id?: string | null;
+  payment_id?: string | null;
+  payment_signature?: string | null;
+  template_title?: string;
+  template_slug?: string;
+  template_price?: number;
+  template_pricing_type?: 'free' | 'premium';
   created_at?: string;
   updated_at?: string;
 }

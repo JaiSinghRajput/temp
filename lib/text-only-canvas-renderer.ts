@@ -114,6 +114,12 @@ export async function loadTextOnlyCanvas({
       left: textEl.left * scale,
       top: textEl.top * scale,
       fontSize: (textEl.fontSize || 40) * scale,
+      fontFamily: textEl.fontFamily || 'Arial',
+      fontWeight: textEl.fontWeight || 'normal',
+      fill: textEl.fill || '#000000',
+      textAlign: (textEl.textAlign as any) || 'left',
+      angle: textEl.angle || 0,
+      width: textEl.width ? textEl.width * scale : undefined,
       scaleX: textEl.scaleX || 1,
       scaleY: textEl.scaleY || 1,
       // CRITICAL: Lock all properties except text content

@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
     try {
       const client = getClient();
       const order = await client.orders.fetch(order_id);
-      verifiedAmount = order.amount ?? verifiedAmount;
+      verifiedAmount = (order.amount ? Number(order.amount) : null) ?? verifiedAmount;
     } catch (fetchError) {
       console.warn('Razorpay order fetch failed, skipping amount verification', fetchError);
     }

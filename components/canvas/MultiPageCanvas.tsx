@@ -209,7 +209,7 @@ export function MultiPageCanvas({
         isInitializing.current = false;
       }
     };
-Canvas();
+initCanvas();
     return () => {
       isMounted = false;
     };

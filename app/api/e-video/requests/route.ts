@@ -16,8 +16,12 @@ const safeParse = <T>(value: any, fallback: T): T => {
 export async function GET(request: NextRequest) {
   try {
     const status = request.nextUrl.searchParams.get('status');
+    const paymentStatus = request.nextUrl.searchParams.get('paymentStatus');
     const templateId = request.nextUrl.searchParams.get('templateId');
     const cardId = request.nextUrl.searchParams.get('cardId');
+    const userId = request.nextUrl.searchParams.get('userId');
+    const dateFrom = request.nextUrl.searchParams.get('from');
+    const dateTo = request.nextUrl.searchParams.get('to');
 
     const filters: string[] = [];
     const params: (string | number)[] = [];
@@ -25,6 +29,11 @@ export async function GET(request: NextRequest) {
     if (status) {
       filters.push('r.status = ?');
       params.push(status);
+    }
+
+    if (paymentStatus && ['pending', 'paid'].includes(paymentStatus)) {
+      filters.push('r.payment_status = ?');
+      params.push(paymentStatus);
     }
 
     if (templateId) {
@@ -37,10 +46,41 @@ export async function GET(request: NextRequest) {
       params.push(Number(cardId));
     }
 
+    if (userId) {
+      filters.push('r.user_id = ?');
+      params.push(userId);
+    }
+
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (dateFrom) {
+      if (!dateRegex.test(dateFrom)) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid from date format. Use YYYY-MM-DD.' },
+          { status: 400 }
+        );
+      }
+      filters.push('DATE(r.created_at) >= ?');
+      params.push(dateFrom);
+    }
+
+    if (dateTo) {
+      if (!dateRegex.test(dateTo)) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid to date format. Use YYYY-MM-DD.' },
+          { status: 400 }
+        );
+      }
+      filters.push('DATE(r.created_at) <= ?');
+      params.push(dateTo);
+    }
+
     const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
 
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT r.*, t.title AS template_title, t.slug AS template_slug, c.card_image_url
+      `SELECT r.*, t.title AS template_title, t.slug AS template_slug, t.price AS template_price,
+              CASE WHEN t.price IS NULL OR t.price = 0 THEN 'free' ELSE 'premium' END AS template_pricing_type,
+              c.card_image_url
        FROM e_video_requests r
        JOIN e_video_templates t ON t.id = r.template_id
        LEFT JOIN e_video_cards c ON c.id = r.card_id
@@ -75,6 +115,7 @@ export async function POST(request: NextRequest) {
       requester_email,
       requester_phone,
       payload,
+      status,
     } = body as {
       template_id?: number;
       card_id?: number | null;
@@ -83,7 +124,20 @@ export async function POST(request: NextRequest) {
       requester_email?: string;
       requester_phone?: string;
       payload?: Record<string, any>;
+      status?: string;
     };
+
+    const allowedStatuses = ['new', 'in_progress', 'done', 'cancelled', 'draft'];
+    const finalStatus = status && allowedStatuses.includes(status) ? status : 'new';
+
+    console.log('📥 [POST /api/e-video/requests] Received:', {
+      template_id,
+      user_id,
+      requester_name,
+      status: finalStatus,
+      payloadKeys: payload ? Object.keys(payload) : [],
+      payloadSize: payload ? JSON.stringify(payload).length : 0,
+    });
 
     if (!template_id || !requester_name || !payload) {
       return NextResponse.json(
@@ -118,18 +172,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Check if user_id exists in users table (to satisfy foreign key constraint)
+    let validUserId: string | null = null;
+    if (user_id) {
+      const [userRows] = await pool.query<RowDataPacket[]>(
+        'SELECT uid FROM users WHERE uid = ? LIMIT 1',
+        [user_id]
+      );
+      if (userRows.length > 0) {
+        validUserId = user_id;
+      }
+    }
+
     const [result] = await pool.query<ResultSetHeader>(
       `INSERT INTO e_video_requests
-        (template_id, card_id, user_id, requester_name, requester_email, requester_phone, payload)
-       VALUES (?, ?, ?, ?, ?, ?, ?)` ,
+        (template_id, card_id, user_id, requester_name, requester_email, requester_phone, payload, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)` ,
       [
         template_id,
         card_id ?? null,
-        user_id ?? null,
+        validUserId,
         requester_name,
         requester_email || null,
         requester_phone || null,
         JSON.stringify(payload),
+        finalStatus,
       ]
     );
 

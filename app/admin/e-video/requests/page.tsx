@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import axiosInstance from '@/lib/axios';
 import { AdminHeader } from '@/components/admin/admin-header';
 import { VideoInviteRequest } from '@/lib/types';
+import { Download, VisibilityOutlined } from '@mui/icons-material';
 
 const STATUS_OPTIONS: Array<VideoInviteRequest['status']> = [
   'new',
@@ -16,47 +18,59 @@ interface RequestRow extends VideoInviteRequest {
   template_title?: string;
   template_slug?: string;
   card_image_url?: string | null;
+  payment_status?: 'pending' | 'paid';
 }
 
 export default function EVideoRequestsPage() {
+  const router = useRouter();
   const [requests, setRequests] = useState<RequestRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [paymentFilter, setPaymentFilter] = useState<string>('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {
     return requests.filter((r) => {
       const statusOk = statusFilter ? r.status === statusFilter : true;
+      const paymentOk = paymentFilter ? r.payment_status === paymentFilter : true;
       const text = `${r.requester_name} ${r.requester_email ?? ''} ${r.template_title ?? ''}`.toLowerCase();
       const searchOk = search ? text.includes(search.toLowerCase()) : true;
-      return statusOk && searchOk;
+      return statusOk && paymentOk && searchOk;
     });
-  }, [requests, statusFilter, search]);
+  }, [requests, statusFilter, paymentFilter, search]);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       setError(null);
       try {
-        const qs = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : '';
-        const res = await axiosInstance.get(`/api/e-video/requests${qs}`);
+        const qs = new URLSearchParams();
+        if (statusFilter) qs.set('status', statusFilter);
+        if (paymentFilter) qs.set('paymentStatus', paymentFilter);
+        if (fromDate) qs.set('from', fromDate);
+        if (toDate) qs.set('to', toDate);
+        const qsString = qs.toString();
+        const res = await axiosInstance.get(`/api/e-video/requests${qsString ? `?${qsString}` : ''}`);
         if (res.data.success) {
           setRequests(res.data.data || []);
         } else {
           setError(res.data.error || 'Failed to load requests');
         }
       } catch (err) {
+        const apiError = (err as any)?.response?.data?.error;
         console.error('Failed to load requests', err);
-        setError('Failed to load requests');
+        setError(apiError || 'Failed to load requests');
       } finally {
         setLoading(false);
       }
     };
 
     load();
-  }, [statusFilter]);
+  }, [statusFilter, paymentFilter, fromDate, toDate]);
 
   const updateStatus = async (id: number, status: RequestRow['status'], admin_notes?: string | null) => {
     setUpdatingId(id);
@@ -79,120 +93,192 @@ export default function EVideoRequestsPage() {
     }
   };
 
+  const openFullScreenView = async (request: RequestRow) => {
+    router.push(`/admin/e-video/requests/${request.id}`);
+  };
+
+  const exportRequestData = (request: RequestRow) => {
+    const data = {
+      id: request.id,
+      template: request.template_title,
+      requester: {
+        name: request.requester_name,
+        email: request.requester_email,
+        phone: request.requester_phone,
+      },
+      fields: request.payload,
+      status: request.status,
+      notes: request.admin_notes,
+      created_at: request.created_at,
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `video-request-${request.id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-16">
-      <AdminHeader title="E-Video Requests" subtitle="Manage incoming video invite requests" />
+    <>
+      <div className="min-h-screen bg-gray-50 pb-16">
+        <AdminHeader title="E-Video Requests" subtitle="Manage incoming video invite requests" />
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-4 py-3">
-            {error}
-          </div>
-        )}
-
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap gap-3 items-center">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-md border px-3 py-2 text-sm"
-            >
-              <option value="">All statuses</option>
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s.replace('_', ' ')}
-                </option>
-              ))}
-            </select>
-
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="rounded-md border px-3 py-2 text-sm"
-              placeholder="Search by name or email"
-            />
-          </div>
-
-          <div className="text-sm text-gray-500">{requests.length} total · {filtered.length} shown</div>
-        </div>
-
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <div className="grid grid-cols-12 bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-600">
-            <div className="col-span-3">Requester</div>
-            <div className="col-span-2">Template</div>
-            <div className="col-span-2">Status</div>
-            <div className="col-span-3">Payload</div>
-            <div className="col-span-2 text-right">Actions</div>
-          </div>
-
-          {loading ? (
-            <div className="p-6 text-sm text-gray-500">Loading requests…</div>
-          ) : filtered.length === 0 ? (
-            <div className="p-6 text-sm text-gray-500">No requests found.</div>
-          ) : (
-            <div className="divide-y">
-              {filtered.map((req) => (
-                <div key={req.id} className="grid grid-cols-12 gap-3 px-4 py-3 items-start text-sm">
-                  <div className="col-span-3 space-y-1">
-                    <p className="font-semibold text-gray-900">{req.requester_name}</p>
-                    {req.requester_email && <p className="text-gray-600 text-xs">{req.requester_email}</p>}
-                    {req.requester_phone && <p className="text-gray-600 text-xs">{req.requester_phone}</p>}
-                  </div>
-
-                  <div className="col-span-2 space-y-1">
-                    <p className="text-gray-800">{req.template_title || 'Template'}</p>
-                    {req.template_slug && (
-                      <p className="text-xs text-gray-500">/{req.template_slug}</p>
-                    )}
-                  </div>
-
-                  <div className="col-span-2">
-                    <select
-                      value={req.status}
-                      onChange={(e) => updateStatus(req.id, e.target.value as RequestRow['status'], req.admin_notes ?? undefined)}
-                      className="rounded-md border px-2 py-1 text-xs"
-                      disabled={updatingId === req.id}
-                    >
-                      {STATUS_OPTIONS.map((s) => (
-                        <option key={s} value={s}>
-                          {s.replace('_', ' ')}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="col-span-3">
-                    <div className="bg-gray-50 border rounded-md p-2 text-xs text-gray-700 max-h-32 overflow-auto">
-                      {Object.keys(req.payload || {}).length === 0 ? (
-                        <span className="text-gray-400">No payload</span>
-                      ) : (
-                        <pre className="whitespace-pre-wrap wrap-break-word text-[11px] leading-relaxed">{JSON.stringify(req.payload, null, 2)}</pre>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="col-span-2 text-right space-y-2">
-                    <textarea
-                      value={req.admin_notes || ''}
-                      onChange={(e) => setRequests((prev) => prev.map((r) => (r.id === req.id ? { ...r, admin_notes: e.target.value } : r)))}
-                      placeholder="Admin notes"
-                      className="w-full rounded-md border px-2 py-1 text-xs"
-                      rows={3}
-                    />
-                    <button
-                      onClick={() => updateStatus(req.id, req.status, req.admin_notes ?? undefined)}
-                      disabled={updatingId === req.id}
-                      className="px-3 py-1 rounded-md bg-primary text-white text-xs font-semibold disabled:opacity-60"
-                    >
-                      {updatingId === req.id ? 'Saving…' : 'Save'}
-                    </button>
-                  </div>
-                </div>
-              ))}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-4 py-3">
+              {error}
             </div>
           )}
+
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap gap-3 items-center">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="rounded-md border px-3 py-2 text-sm"
+              >
+                <option value="">All statuses</option>
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s.replace('_', ' ')}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value)}
+                className="rounded-md border px-3 py-2 text-sm"
+              >
+                <option value="">All payments</option>
+                <option value="pending">Pending</option>
+                <option value="paid">Paid</option>
+              </select>
+
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="rounded-md border px-3 py-2 text-sm"
+                placeholder="Search by name or email"
+              />
+
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <label className="text-xs text-gray-500">From</label>
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="rounded-md border px-3 py-2 text-sm"
+                />
+                <label className="text-xs text-gray-500">To</label>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="rounded-md border px-3 py-2 text-sm"
+                />
+              </div>
+
+              {(statusFilter || paymentFilter || fromDate || toDate) && (
+                <button
+                  onClick={() => {
+                    setStatusFilter('');
+                    setPaymentFilter('');
+                    setFromDate('');
+                    setToDate('');
+                  }}
+                  className="text-xs text-blue-600 underline"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+
+            <div className="text-sm text-gray-500">{requests.length} total · {filtered.length} shown</div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            {loading ? (
+              <div className="p-6 text-sm text-gray-500">Loading requests…</div>
+            ) : filtered.length === 0 ? (
+              <div className="p-6 text-sm text-gray-500">No requests found.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Requester</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Template</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Payment</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600">Created</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filtered.map((req) => (
+                      <tr key={req.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900">#{req.id}</td>
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-medium text-gray-900">{req.requester_name}</div>
+                          {req.requester_email && <div className="text-xs text-gray-500">{req.requester_email}</div>}
+                          {req.requester_phone && <div className="text-xs text-gray-500">{req.requester_phone}</div>}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{req.template_title || 'N/A'}</td>
+                        <td className="px-4 py-3">
+                          <select
+                            value={req.status}
+                            onChange={(e) => updateStatus(req.id, e.target.value as RequestRow['status'], req.admin_notes ?? undefined)}
+                            className="rounded-md border px-2 py-1 text-xs"
+                            disabled={updatingId === req.id}
+                          >
+                            {STATUS_OPTIONS.map((s) => (
+                              <option key={s} value={s}>
+                                {s.replace('_', ' ')}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${req.payment_status === 'paid'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                            {req.payment_status || 'pending'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {req.created_at ? new Date(req.created_at).toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 text-right space-x-2">
+                          <button
+                            onClick={() => openFullScreenView(req)}
+                            className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+                          >
+                            <VisibilityOutlined sx={{ fontSize: 14 }} />
+                            View
+                          </button>
+                          <button
+                            onClick={() => exportRequestData(req)}
+                            className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-gray-600 text-white text-xs font-semibold hover:bg-gray-700"
+                          >
+                            <Download sx={{ fontSize: 14 }} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
+
