@@ -114,10 +114,6 @@ export async function loadTextOnlyCanvas({
       left: textEl.left * scale,
       top: textEl.top * scale,
       fontSize: (textEl.fontSize || 40) * scale,
-
-  const textObjects = new Map<string, Textbox>();
-
-  // Create text elements - LOCKED positions, sizes, and styles
       scaleX: textEl.scaleX || 1,
       scaleY: textEl.scaleY || 1,
       // CRITICAL: Lock all properties except text content

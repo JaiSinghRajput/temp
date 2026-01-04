@@ -39,7 +39,7 @@ const Navbar: React.FC = () => {
   ];
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b shadow-sm">
+    <header className="w-full border-b border-gray-200 bg-white sticky top-0 z-50 shadow-sm" suppressHydrationWarning>
       {/* ================= MOBILE NAV ================= */}
       <div className="md:hidden">
         <div className="h-16 px-4 flex items-center justify-between">

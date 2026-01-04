@@ -21,6 +21,13 @@ interface VideoTemplate {
   price?: number;
 }
 
+function slugify(text: string[] | null | undefined): string {
+  if (!text) return '';
+  return text
+    .filter(t => t) // Remove empty strings
+    .map(t => t.toString().toLowerCase().replace(/\s+/g, '-'))
+    .join('/');
+}
 export default function Home() {
   const { user, loading } = useAuth();
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -61,7 +68,7 @@ export default function Home() {
           t.pages?.[0]?.imageUrl ||
           '',
         title: t.name,
-        link: `/e-card/customize/${t.id}`,
+        link: `/e-card/${slugify([t.category_name ?? '', t.subcategory_name ?? '', t.name])}`,
       }))
       .filter((item) => item.image);
   }, [templates]);
