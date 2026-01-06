@@ -214,9 +214,62 @@ export default function TemplateEditor({
       }
     };
 
+    const handleObjectModified = (e: any) => {
+      const target = e.target;
+      if (!(target instanceof Textbox)) return;
+
+      // Store previous dimensions if not already stored
+      if (!(target as any)._prevWidth) {
+        (target as any)._prevWidth = target.width;
+        (target as any)._prevHeight = target.height;
+        (target as any)._prevFontSize = target.fontSize;
+        return;
+      }
+
+      const prevWidth = (target as any)._prevWidth;
+      const prevHeight = (target as any)._prevHeight;
+      const prevFontSize = (target as any)._prevFontSize;
+      const currentWidth = target.width;
+      const currentHeight = target.height;
+      const currentFontSize = target.fontSize || 40;
+
+      // Only apply font size scaling if BOTH width and height changed
+      // (indicates corner drag, not edge drag)
+      const widthChanged = Math.abs(currentWidth - prevWidth) > 1;
+      const heightChanged = Math.abs(currentHeight - prevHeight) > 1;
+
+      if (widthChanged && heightChanged) {
+        // Calculate area scale factor (based on width × height)
+        const prevArea = prevWidth * prevHeight;
+        const currentArea = currentWidth * currentHeight;
+        const areaScaleFactor = currentArea / prevArea;
+
+        // Apply square root of area scale factor to font size
+        const newFontSize = Math.max(8, Math.round(currentFontSize * Math.sqrt(areaScaleFactor)));
+        
+        if (newFontSize !== currentFontSize) {
+          target.set({ fontSize: newFontSize, dirty: true, objectCaching: false } as any);
+          (target as any)._clearCache?.();
+          target.initDimensions();
+          target.setCoords();
+          canvas.requestRenderAll();
+          setFontSize(newFontSize);
+          setActive({ ...target } as Textbox);
+        }
+
+        // Update stored dimensions for next modification
+        (target as any)._prevFontSize = newFontSize;
+      }
+
+      // Always update stored dimensions
+      (target as any)._prevWidth = currentWidth;
+      (target as any)._prevHeight = currentHeight;
+    };
+
     canvas.on('selection:created', syncSidebar);
     canvas.on('selection:updated', syncSidebar);
     canvas.on('selection:cleared', () => setActive(null));
+    canvas.on('object:modified', handleObjectModified);
     canvas.on('text:changed', (e) => {
       if (e.target instanceof Textbox) setTextValue(e.target.text || '');
     });
@@ -333,6 +386,8 @@ export default function TemplateEditor({
           fontWeight: textData.fontWeight || 'normal',
           fill: textData.fill,
           width: textData.width,
+          scaleX: textData.scaleX ?? 1,
+          scaleY: textData.scaleY ?? 1,
           textAlign: textData.textAlign,
           angle: textData.angle || 0,
           originX: 'center',
@@ -413,11 +468,24 @@ export default function TemplateEditor({
     }
 
     // For non-font changes
-    target.set({ [key]: value, dirty: true, objectCaching: false } as any);
-    if (key === 'text') setTextValue(value);
-    if (key === 'fontSize') setFontSize(value);
-    if (key === 'fill') setFillColor(value);
-    if (key === 'fontWeight') setBold(value === 'bold');
+    const updateObj: any = { [key]: value, dirty: true, objectCaching: false };
+    
+    // Link element size with font size
+    if (key === 'fontSize') {
+      const currentWidth = (target.width || 250) as number;
+      const currentFontSize = (target.fontSize || 40) as number;
+      const scaleFactor = value / currentFontSize;
+      updateObj.width = currentWidth * scaleFactor;
+      setFontSize(value);
+    } else if (key === 'text') {
+      setTextValue(value);
+    } else if (key === 'fill') {
+      setFillColor(value);
+    } else if (key === 'fontWeight') {
+      setBold(value === 'bold');
+    }
+    
+    target.set(updateObj);
     
     // Clear cache and update dimensions
     (target as any)._clearCache?.();
@@ -502,6 +570,8 @@ export default function TemplateEditor({
             fontFamily: textbox.fontFamily,
             fill: textbox.fill,
             width: textbox.width,
+            scaleX: textbox.scaleX ?? 1,
+            scaleY: textbox.scaleY ?? 1,
             textAlign: textbox.textAlign,
             angle: textbox.angle || 0,
             locked: (textbox as any).isLocked || false,
@@ -572,6 +642,8 @@ export default function TemplateEditor({
         fontFamily: textbox.fontFamily,
         fill: textbox.fill,
         width: textbox.width,
+        scaleX: textbox.scaleX ?? 1,
+        scaleY: textbox.scaleY ?? 1,
         textAlign: textbox.textAlign,
         angle: textbox.angle || 0,
         locked: (textbox as any).isLocked || false,
@@ -693,6 +765,8 @@ export default function TemplateEditor({
           fontFamily: textbox.fontFamily,
           fill: textbox.fill,
           width: textbox.width,
+          scaleX: textbox.scaleX ?? 1,
+          scaleY: textbox.scaleY ?? 1,
           textAlign: textbox.textAlign,
           angle: textbox.angle || 0,
           locked: (textbox as any).isLocked || false,
@@ -742,6 +816,8 @@ export default function TemplateEditor({
                 fontFamily: element.fontFamily,
                 fill: element.fill,
                 width: element.width,
+                scaleX: element.scaleX ?? 1,
+                scaleY: element.scaleY ?? 1,
                 textAlign: element.textAlign,
                 angle: element.angle || 0,
                 originX: 'center',
@@ -787,6 +863,8 @@ export default function TemplateEditor({
           fontFamily: t.fontFamily,
           fill: t.fill,
           width: t.width,
+          scaleX: t.scaleX ?? 1,
+          scaleY: t.scaleY ?? 1,
           textAlign: t.textAlign,
           angle: t.angle || 0,
           locked: (t as any).isLocked || false,
