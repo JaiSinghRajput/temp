@@ -7,6 +7,7 @@ import { uploadDataUrlToCloudinary, uploadToCloudinary } from '@/lib/cloudinary'
 import { loadCanvasBackgroundImage, validateImageFile } from '@/lib/canvas-utils';
 import { COLOR_OPTIONS } from '@/lib/constants';
 import { ColorSelect } from '@/components/ui/color-select';
+import colorService from '@/services/color.service';
 import type { Category, Subcategory, CustomFont } from '@/lib/types';
 
 const DEFAULT_TEMPLATE_IMAGE = '';
@@ -59,7 +60,8 @@ export default function TemplateEditor({
 
   const [pricingType, setPricingType] = useState<'free' | 'premium'>('free');
   const [price, setPrice] = useState('');
-  const [cardColor, setCardColor] = useState(COLOR_OPTIONS[0].value);
+  const [colors, setColors] = useState<Array<{ id: number; name: string; hex_code: string }>>([]);
+  const [cardColor, setCardColor] = useState('');
 
   const [pages, setPages] = useState<Array<{ imageUrl: string; publicId: string; canvasData?: any }>>([]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -75,6 +77,44 @@ export default function TemplateEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isUploadingPreview, setIsUploadingPreview] = useState(false);
+
+  /* ---------------- COORDINATE SCALING HELPERS ---------------- */
+  // Convert absolute coordinates to relative (percentage-based)
+  const absoluteToRelative = (position: any, originalWidth: number, originalHeight: number) => {
+    if (!originalWidth || !originalHeight) return position;
+    return {
+      ...position,
+      leftPercent: (position.left / originalWidth) * 100,
+      topPercent: (position.top / originalHeight) * 100,
+      widthPercent: (position.width / originalWidth) * 100,
+      fontSizeRatio: position.fontSize ? position.fontSize / position.width : undefined,
+    };
+  };
+
+  // Convert relative coordinates back to absolute based on current canvas size
+  const relativeToAbsolute = (position: any, canvasWidth: number, canvasHeight: number) => {
+    const hasRelative = position.leftPercent !== undefined && position.topPercent !== undefined;
+    
+    if (hasRelative) {
+      // New format with percentage - scale to new canvas size
+      const newWidth = (position.widthPercent / 100) * canvasWidth;
+      const newFontSize = position.fontSizeRatio 
+        ? Math.max(8, newWidth * position.fontSizeRatio)
+        : position.fontSize;
+        
+      return {
+        ...position,
+        left: (position.leftPercent / 100) * canvasWidth,
+        top: (position.topPercent / 100) * canvasHeight,
+        width: newWidth,
+        fontSize: newFontSize,
+      };
+    }
+    
+    // Old format without percentages - DON'T SCALE, use as-is
+    // This preserves existing templates on their original canvas size
+    return position;
+  };
   
   // Loading states - always wait for fonts to load first
   const [isBackgroundLoading, setIsBackgroundLoading] = useState(mode === 'edit');
@@ -112,6 +152,25 @@ export default function TemplateEditor({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  /* ---------------- LOAD COLORS FROM DATABASE ---------------- */
+  useEffect(() => {
+    const loadColors = async () => {
+      try {
+        const fetchedColors = await colorService.getAll();
+        if (fetchedColors.length > 0) {
+          setColors(fetchedColors);
+          // Set first color as default
+          setCardColor(fetchedColors[0].hex_code);
+        }
+      } catch (err) {
+        console.error('Error loading colors:', err);
+        // Fallback to constants if fetch fails
+        setCardColor(COLOR_OPTIONS[0].value);
+      }
+    };
+    loadColors();
   }, []);
 
   /* ---------------- LOAD CATEGORIES ---------------- */
@@ -264,6 +323,9 @@ export default function TemplateEditor({
       // Always update stored dimensions
       (target as any)._prevWidth = currentWidth;
       (target as any)._prevHeight = currentHeight;
+      
+      // Ensure position is persisted by updating coordinates
+      target.setCoords();
     };
 
     canvas.on('selection:created', syncSidebar);
@@ -336,8 +398,30 @@ export default function TemplateEditor({
     if (textElements.length === 0) return;
 
     const loadTextElements = async () => {
+      // Check if this is an old format template (without percentages)
+      const isOldFormat = textElements.length > 0 && textElements[0].leftPercent === undefined;
+      const originalCanvasWidth = initialData.canvas_data?.canvasWidth || 800;
+      const originalCanvasHeight = initialData.canvas_data?.canvasHeight || 600;
+
+      // Convert old format to new format with percentages
+      const normalizedElements = textElements.map((textData: any) => {
+        if (textData.leftPercent !== undefined) {
+          // Already in new format
+          return textData;
+        }
+        
+        // Old format - convert to percentages
+        return {
+          ...textData,
+          leftPercent: (textData.left / originalCanvasWidth) * 100,
+          topPercent: (textData.top / originalCanvasHeight) * 100,
+          widthPercent: (textData.width / originalCanvasWidth) * 100,
+          fontSizeRatio: textData.fontSize ? textData.fontSize / textData.width : undefined,
+        };
+      });
+
       // Collect all unique fonts from text elements
-      const uniqueFonts = Array.from(new Set(textElements.map((t: any) => t.fontFamily).filter(Boolean)));
+      const uniqueFonts = Array.from(new Set(normalizedElements.map((t: any) => t.fontFamily).filter(Boolean)));
       const fontsToLoad: CustomFont[] = [];
       
       // First try to find fonts in managedFonts, then in loadedCustomFonts
@@ -377,15 +461,18 @@ export default function TemplateEditor({
       }
 
       // Now create textboxes with loaded fonts
-      textElements.forEach((textData: any) => {
+      normalizedElements.forEach((textData: any) => {
+        // Always use relativeToAbsolute since we've normalized to new format
+        const scaledPosition = relativeToAbsolute(textData, fabricCanvas.current?.width || 800, fabricCanvas.current?.height || 600);
+        
         const tb = new Textbox(textData.text || '', {
-          left: textData.left,
-          top: textData.top,
-          fontSize: textData.fontSize,
+          left: scaledPosition.left,
+          top: scaledPosition.top,
+          fontSize: scaledPosition.fontSize || textData.fontSize,
           fontFamily: textData.fontFamily,
           fontWeight: textData.fontWeight || 'normal',
           fill: textData.fill,
-          width: textData.width,
+          width: scaledPosition.width,
           scaleX: textData.scaleX ?? 1,
           scaleY: textData.scaleY ?? 1,
           textAlign: textData.textAlign,
@@ -396,6 +483,8 @@ export default function TemplateEditor({
           cornerColor: '#3b82f6',
         });
         (tb as any).isLocked = Boolean(textData.locked);
+        // Ensure coordinates are properly set
+        tb.setCoords();
         fabricCanvas.current?.add(tb);
       });
 
@@ -629,24 +718,43 @@ export default function TemplateEditor({
     if (!fabricCanvas.current || !cloudinaryPublicId) return null;
 
     const objects = fabricCanvas.current.getObjects();
+    const canvasWidth = fabricCanvas.current.width;
+    const canvasHeight = fabricCanvas.current.height;
+    
     const textElements = objects.filter((obj) => obj instanceof Textbox).map((obj, i) => {
       const textbox = obj as Textbox;
+      // Force coordinate calculation to ensure positions are accurate
+      textbox.setCoords();
+      
+      // Convert to relative coordinates
+      const position = absoluteToRelative({
+        left: textbox.left,
+        top: textbox.top,
+        width: textbox.width,
+      }, canvasWidth, canvasHeight);
+      
       return {
         id: String(i + 1),
         text: textbox.text || '',
         label: `Text Field ${i + 1}`,
-        left: textbox.left,
-        top: textbox.top,
+        left: position.left,
+        top: position.top,
+        leftPercent: position.leftPercent,
+        topPercent: position.topPercent,
         fontSize: textbox.fontSize,
+        fontSizeRatio: position.fontSizeRatio,
         fontWeight: textbox.fontWeight,
         fontFamily: textbox.fontFamily,
         fill: textbox.fill,
-        width: textbox.width,
+        width: position.width,
+        widthPercent: position.widthPercent,
         scaleX: textbox.scaleX ?? 1,
         scaleY: textbox.scaleY ?? 1,
         textAlign: textbox.textAlign,
         angle: textbox.angle || 0,
         locked: (textbox as any).isLocked || false,
+        canvasWidth,
+        canvasHeight,
       };
     });
 
@@ -655,8 +763,8 @@ export default function TemplateEditor({
       publicId: cloudinaryPublicId,
       canvasData: {
         textElements,
-        canvasWidth: fabricCanvas.current.width,
-        canvasHeight: fabricCanvas.current.height,
+        canvasWidth,
+        canvasHeight,
       },
     };
   };
@@ -750,33 +858,60 @@ export default function TemplateEditor({
   const switchPage = async (index: number) => {
     if (!fabricCanvas.current || !containerRef.current || index < 0 || index >= pages.length) return;
 
+    // Save current page data before switching with relative coordinates
     if (pages[currentPageIndex]) {
       const objects = fabricCanvas.current.getObjects();
+      const currentCanvasWidth = fabricCanvas.current.width;
+      const currentCanvasHeight = fabricCanvas.current.height;
+      
       const textElements = objects.filter((obj) => obj instanceof Textbox).map((obj, i) => {
         const textbox = obj as Textbox;
+        // Force coordinate calculation to ensure positions are accurate
+        textbox.setCoords();
+        
+        // Convert to relative coordinates
+        const position = absoluteToRelative({
+          left: textbox.left,
+          top: textbox.top,
+          width: textbox.width,
+        }, currentCanvasWidth, currentCanvasHeight);
+        
         return {
           id: String(i + 1),
           text: textbox.text || '',
           label: `Text Field ${i + 1}`,
-          left: textbox.left,
-          top: textbox.top,
+          left: position.left,
+          top: position.top,
+          leftPercent: position.leftPercent,
+          topPercent: position.topPercent,
           fontSize: textbox.fontSize,
+          fontSizeRatio: position.fontSizeRatio,
           fontWeight: textbox.fontWeight,
           fontFamily: textbox.fontFamily,
           fill: textbox.fill,
-          width: textbox.width,
+          width: position.width,
+          widthPercent: position.widthPercent,
           scaleX: textbox.scaleX ?? 1,
           scaleY: textbox.scaleY ?? 1,
           textAlign: textbox.textAlign,
           angle: textbox.angle || 0,
           locked: (textbox as any).isLocked || false,
+          canvasWidth: currentCanvasWidth,
+          canvasHeight: currentCanvasHeight,
         };
       });
-      pages[currentPageIndex].canvasData = {
-        textElements,
-        canvasWidth: fabricCanvas.current.width,
-        canvasHeight: fabricCanvas.current.height,
+      
+      // Create a new pages array with updated current page data
+      const updatedPages = [...pages];
+      updatedPages[currentPageIndex] = {
+        ...updatedPages[currentPageIndex],
+        canvasData: {
+          textElements,
+          canvasWidth: currentCanvasWidth,
+          canvasHeight: currentCanvasHeight,
+        },
       };
+      setPages(updatedPages);
     }
 
     fabricCanvas.current.clear();
@@ -807,15 +942,24 @@ export default function TemplateEditor({
               }
             }
 
+            const newCanvasWidth = fabricCanvas.current.width;
+            const newCanvasHeight = fabricCanvas.current.height;
+
             pages[index].canvasData.textElements.forEach((element: any) => {
+              // Only scale if using new percentage format
+              const hasPercentages = element.leftPercent !== undefined && element.topPercent !== undefined;
+              const scaledPosition = hasPercentages 
+                ? relativeToAbsolute(element, newCanvasWidth, newCanvasHeight)
+                : element;
+              
               const tb = new Textbox(element.text, {
-                left: element.left,
-                top: element.top,
-                fontSize: element.fontSize,
+                left: scaledPosition.left,
+                top: scaledPosition.top,
+                fontSize: scaledPosition.fontSize || element.fontSize,
                 fontWeight: element.fontWeight,
                 fontFamily: element.fontFamily,
                 fill: element.fill,
-                width: element.width,
+                width: scaledPosition.width,
                 scaleX: element.scaleX ?? 1,
                 scaleY: element.scaleY ?? 1,
                 textAlign: element.textAlign,
@@ -826,6 +970,8 @@ export default function TemplateEditor({
                 cornerColor: '#3b82f6',
               });
               (tb as any).isLocked = element.locked || false;
+              // Ensure coordinates are properly set
+              tb.setCoords();
               fabricCanvas.current?.add(tb);
             });
             fabricCanvas.current?.requestRenderAll();
@@ -850,33 +996,59 @@ export default function TemplateEditor({
 
     try {
       const objects = fabricCanvas.current.getObjects();
+      const canvasWidth = fabricCanvas.current.width;
+      const canvasHeight = fabricCanvas.current.height;
+      
       const textElements = objects.filter((o) => o instanceof Textbox).map((obj, i) => {
         const t = obj as Textbox;
+        // Force coordinate calculation to ensure positions are accurate
+        t.setCoords();
+        
+        // Convert to relative coordinates for responsive scaling
+        const position = absoluteToRelative({
+          left: t.left,
+          top: t.top,
+          width: t.width,
+        }, canvasWidth, canvasHeight);
+        
         return {
           id: String(i + 1),
           text: t.text,
           label: `Text Field ${i + 1}`,
-          left: t.left,
-          top: t.top,
+          left: position.left,
+          top: position.top,
+          leftPercent: position.leftPercent,
+          topPercent: position.topPercent,
           fontSize: t.fontSize,
+          fontSizeRatio: position.fontSizeRatio,
           fontWeight: t.fontWeight,
           fontFamily: t.fontFamily,
           fill: t.fill,
-          width: t.width,
+          width: position.width,
+          widthPercent: position.widthPercent,
           scaleX: t.scaleX ?? 1,
           scaleY: t.scaleY ?? 1,
           textAlign: t.textAlign,
           angle: t.angle || 0,
           locked: (t as any).isLocked || false,
+          canvasWidth,
+          canvasHeight,
         };
       });
 
+      // Update current page with latest canvas data if multipage
+      let finalPages = pages;
       if (isMultipage && pages[currentPageIndex]) {
-        pages[currentPageIndex].canvasData = {
-          textElements,
-          canvasWidth: fabricCanvas.current.width,
-          canvasHeight: fabricCanvas.current.height,
+        const updatedPages = [...pages];
+        updatedPages[currentPageIndex] = {
+          ...updatedPages[currentPageIndex],
+          canvasData: {
+            textElements,
+            canvasWidth,
+            canvasHeight,
+          },
         };
+        finalPages = updatedPages;
       }
 
       let thumbSecureUrl = previewImageUrl;
@@ -891,22 +1063,29 @@ export default function TemplateEditor({
 
       let canvasData: any = {
         textElements,
-        canvasWidth: fabricCanvas.current.width,
-        canvasHeight: fabricCanvas.current.height,
+        canvasWidth,
+        canvasHeight,
         customFonts: loadedCustomFonts,
       };
 
       if (isMultipage) {
-        canvasData.pages = pages.map((page) => ({
+        canvasData.pages = finalPages.map((page) => ({
           backgroundId: null,
           cloudinaryPublicId: page.publicId,
           imageUrl: page.imageUrl,
-          canvasData: page.canvasData || {
+          canvasData: page.canvasData ? { ...page.canvasData } : {
             textElements: [],
-            canvasWidth: fabricCanvas.current?.width || 800,
-            canvasHeight: fabricCanvas.current?.height || 600,
+            canvasWidth: 800,
+            canvasHeight: 600,
           },
         }));
+        
+        // For multipage, also include the first page's content in single-page format for backend compatibility
+        if (finalPages[0]?.canvasData?.textElements) {
+          canvasData.textElements = finalPages[0].canvasData.textElements;
+          canvasData.canvasWidth = finalPages[0].canvasData.canvasWidth;
+          canvasData.canvasHeight = finalPages[0].canvasData.canvasHeight;
+        }
       }
 
       const payload = {
@@ -918,8 +1097,8 @@ export default function TemplateEditor({
         pricing_type: pricingType,
         price: pricingType === 'premium' ? Number(price) : 0,
         is_multipage: isMultipage,
-        template_image_url: isMultipage && pages.length > 0 ? pages[0].imageUrl : templateImageUrl,
-        cloudinary_public_id: cloudinaryPublicId,
+        template_image_url: isMultipage && finalPages.length > 0 ? finalPages[0].imageUrl : templateImageUrl,
+        cloudinary_public_id: isMultipage && finalPages.length > 0 ? finalPages[0].publicId : cloudinaryPublicId,
         thumbnail_uri: thumbSecureUrl,
         thumbnail_public_id: thumbPublicId,
         canvas_data: canvasData,
@@ -1044,7 +1223,7 @@ export default function TemplateEditor({
           <div className="space-y-2">
             <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Card Color</label>
             <ColorSelect
-              options={COLOR_OPTIONS}
+              options={colors.length > 0 ? colors.map(c => ({ label: c.name, value: c.hex_code })) : COLOR_OPTIONS}
               value={cardColor}
               onChange={setCardColor}
               className="w-full"

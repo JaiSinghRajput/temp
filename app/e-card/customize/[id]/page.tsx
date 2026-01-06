@@ -28,6 +28,7 @@ export default function CustomizeECardPage() {
   const [templateLoading, setTemplateLoading] = useState(true);
   const [error, setError] = useState('');
   const [publishing, setPublishing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
 
   useEffect(() => {
     if (templateId) {
@@ -206,9 +207,9 @@ export default function CustomizeECardPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-primary/10">
           <TextEditor
             templateId={Number(templateId)}
-            canvasData={template.canvas_data}
-            backgroundUrl={template.template_image_url}
-            backgroundId={template.background_id}
+            template={template}
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
             onPublish={handlePublish}
             isLoading={publishing}
           />

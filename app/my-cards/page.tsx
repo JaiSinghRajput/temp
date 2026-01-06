@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserEcard } from '@/lib/types';
 import { userEcardService, paymentService } from '@/services';
+import jsPDF from 'jspdf';
 
 declare global {
   interface Window {
@@ -17,6 +18,7 @@ export default function MyCardsPage() {
   const [cards, setCards] = useState<UserEcard[]>([]);
   const [cardsLoading, setCardsLoading] = useState(true);
   const [payingId, setPayingId] = useState<number | null>(null);
+  const [generatingPdfId, setGeneratingPdfId] = useState<number | null>(null);
 
   const ensureRazorpay = () =>
     new Promise<void>((resolve, reject) => {
@@ -153,6 +155,112 @@ export default function MyCardsPage() {
     }
   };
 
+  const handleDownloadPdf = async (card: UserEcard) => {
+    try {
+      setGeneratingPdfId(card.id);
+
+      // Parse customized data
+      const customizedData = typeof card.customized_data === 'string'
+        ? JSON.parse(card.customized_data)
+        : card.customized_data;
+
+      // Check if multipage
+      const isMultipage = customizedData?.is_multipage && customizedData?.pages && customizedData.pages.length > 1;
+      
+      if (!isMultipage) {
+        // For single page, just open the preview
+        const preview = card.preview_url;
+        if (preview) {
+          window.open(preview, '_blank', 'noopener');
+        }
+        return;
+      }
+
+      // Dynamic import Canvas and loadTextOnlyCanvas
+      const { Canvas } = await import('fabric');
+      const { loadTextOnlyCanvas } = await import('@/lib/text-only-canvas-renderer');
+
+      const pageImages: string[] = [];
+
+      // Render each page to canvas
+      for (let i = 0; i < customizedData.pages.length; i++) {
+        const pageData = customizedData.pages[i];
+        const pageCanvasData = pageData?.canvasData || customizedData;
+        const pageTextElements = pageCanvasData?.textElements || [];
+        const pageBackgroundUrl = pageData?.imageUrl;
+        const pageBackgroundId = pageData?.backgroundId;
+        const pageWidth = pageCanvasData?.canvasWidth || 800;
+        const pageHeight = pageCanvasData?.canvasHeight || 600;
+
+        // Create temporary canvas for rendering
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = pageWidth;
+        tempCanvas.height = pageHeight;
+
+        const fabricCanvas = new Canvas(tempCanvas, {
+          width: pageWidth,
+          height: pageHeight,
+          selection: false,
+        });
+
+        // Load and render page with text
+        await loadTextOnlyCanvas({
+          canvas: fabricCanvas,
+          imageUrl: pageBackgroundUrl,
+          backgroundId: pageBackgroundId,
+          textElements: pageTextElements,
+          canvasWidth: pageWidth,
+          canvasHeight: pageHeight,
+          scale: 1, // Full resolution
+          customFonts: pageCanvasData?.customFonts,
+        });
+
+        // Wait for fonts and rendering
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // Capture page as image
+        const dataUrl = fabricCanvas.toDataURL({
+          format: 'png',
+          quality: 1,
+          multiplier: 1,
+        });
+
+        pageImages.push(dataUrl);
+        fabricCanvas.dispose();
+      }
+
+      // Get canvas dimensions from first page
+      const firstPageData = customizedData.pages[0]?.canvasData || customizedData;
+      const canvasWidth = firstPageData?.canvasWidth || 800;
+      const canvasHeight = firstPageData?.canvasHeight || 600;
+
+      // Create PDF
+      const pdf = new jsPDF({
+        orientation: canvasHeight > canvasWidth ? 'portrait' : 'landscape',
+        unit: 'px',
+        format: [canvasWidth, canvasHeight]
+      });
+
+      // Add each page
+      for (let i = 0; i < pageImages.length; i++) {
+        if (i > 0) {
+          pdf.addPage([canvasWidth, canvasHeight], canvasHeight > canvasWidth ? 'portrait' : 'landscape');
+        }
+        pdf.addImage(pageImages[i], 'PNG', 0, 0, canvasWidth, canvasHeight);
+      }
+
+      // Download PDF
+      const fileName = `card-${card.id}-${Date.now()}.pdf`;
+      pdf.save(fileName);
+
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+      alert('Failed to generate PDF');
+    } finally {
+      setGeneratingPdfId(null);
+    }
+  };
+
   if (loading || cardsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -216,7 +324,7 @@ export default function MyCardsPage() {
                   </div>
                   <div className="p-4 space-y-2">
                     <p className="text-sm text-gray-500">Published on {card.created_at ? new Date(card.created_at).toLocaleDateString() : '—'}</p>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2">
                       {card.public_slug && (
                         <Link
                           href={viewHref}
@@ -246,6 +354,23 @@ export default function MyCardsPage() {
                         </span>
                       )}
                     </div>
+                    {/* PDF Download Button for Multipage Cards */}
+                    {(() => {
+                      const customizedData = typeof card.customized_data === 'string'
+                        ? (() => { try { return JSON.parse(card.customized_data); } catch { return null; } })()
+                        : card.customized_data;
+                      const isMultipage = customizedData?.is_multipage && customizedData?.pages && customizedData.pages.length > 1;
+                      return isMultipage ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadPdf(card)}
+                          disabled={generatingPdfId === card.id}
+                          className="w-full text-center px-3 py-2 rounded-lg border-2 border-[#d18b47] text-[#d18b47] text-sm font-semibold hover:bg-[#d18b47] hover:text-white transition disabled:opacity-60"
+                        >
+                          {generatingPdfId === card.id ? '📄 Generating PDF...' : '📄 Download PDF'}
+                        </button>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
               );

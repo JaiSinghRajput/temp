@@ -7,6 +7,8 @@ import { COLOR_OPTIONS } from '@/lib/constants';
 import { ColorSelect } from '@/components/ui/color-select';
 import { CategorySidebar } from '@/components/layout/catalog';
 import { TemplateCard } from '@/components/templates/template-card';
+import { useEffect, useState } from 'react';
+import colorService from '@/services/color.service';
 
 interface VideoTemplate {
   id: number;
@@ -45,6 +47,20 @@ export function ListView({
   templates,
   videoTemplates,
 }: ListViewProps) {
+  const [colors, setColors] = useState<Array<{ id: number; name: string; hex_code: string }>>([]);
+  useEffect(() => {
+    const loadColors = async () => {
+      try {
+        const fetchedColors = await colorService.getAll();
+        if (fetchedColors.length > 0) {
+          setColors(fetchedColors);
+        }
+      } catch (err) {
+        console.error('Error loading colors:', err);
+      }
+    };
+    loadColors();
+  }, []);
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 lg:py-14">
       {loading ? (
@@ -73,7 +89,7 @@ export function ListView({
 
               <div className="flex flex-wrap items-center gap-3">
                 <ColorSelect
-                  options={COLOR_OPTIONS}
+                  options={colors.map(color => ({ label: color.name, value: color.hex_code }))}
                   value={colorFilter}
                   onChange={onColorChange}
                   includeAll
@@ -100,7 +116,7 @@ export function ListView({
                       const cardSlug = slugify(template.name || '');
                       const catSlug = template.category_name ? slugify(template.category_name) : '';
                       const subcatSlug = template.subcategory_name ? slugify(template.subcategory_name) : '';
-                      const path = catSlug && subcatSlug 
+                      const path = catSlug && subcatSlug
                         ? `/e-card/${catSlug}/${subcatSlug}/${cardSlug}`
                         : catSlug
                           ? `/e-card/${catSlug}/${cardSlug}`

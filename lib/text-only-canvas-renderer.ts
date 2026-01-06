@@ -108,6 +108,8 @@ export async function loadTextOnlyCanvas({
 
   // Create text elements - LOCKED positions, sizes, and styles
   for (const textEl of textElements) {
+    const isLocked = textEl.locked ?? false;
+    
     const textbox = new Textbox(textEl.text, {
       id: textEl.id,
       label: textEl.label,
@@ -130,8 +132,8 @@ export async function loadTextOnlyCanvas({
       lockSkewingY: true,
       lockMovementX: true,
       lockMovementY: true,
-      selectable: true,
-      editable: true,
+      selectable: !isLocked,  // Locked fields cannot be selected
+      editable: !isLocked,    // Locked fields cannot be edited
       hasControls: false,
       hasBorders: false,
       borderColor: 'transparent',
@@ -139,15 +141,17 @@ export async function loadTextOnlyCanvas({
       cornerSize: 0,
     });
 
-    // Make text editable but locked in position
-    textbox.on('selected', () => {
-      if (onTextSelect) {
-        onTextSelect(textEl.id);
-      }
-      // Ensure text remains locked while editing
-      canvas.setActiveObject(textbox);
-      canvas.renderAll();
-    });
+    // Make text editable but locked in position (only if not locked)
+    if (!isLocked) {
+      textbox.on('selected', () => {
+        if (onTextSelect) {
+          onTextSelect(textEl.id);
+        }
+        // Ensure text remains locked while editing
+        canvas.setActiveObject(textbox);
+        canvas.renderAll();
+      });
+    }
 
     canvas.add(textbox);
     textObjects.set(textEl.id, textbox);
