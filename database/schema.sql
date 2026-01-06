@@ -78,7 +78,7 @@ CREATE TABLE templates (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   pricing_type ENUM('free', 'premium') DEFAULT 'free' COMMENT 'Template pricing type',
   price DECIMAL(8,2) DEFAULT 0.00 COMMENT 'Price for premium templates',
-  color VARCHAR(50) NOT NULL
+  color VARCHAR(50) NOT NULL,
   category_id INT(11) DEFAULT 1 COMMENT 'Template category ID',
   subcategory_id INT(11) DEFAULT NULL COMMENT 'Template subcategory ID',
   -- Indexes for performance
