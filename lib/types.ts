@@ -31,6 +31,9 @@ export interface TemplatePage {
   backgroundId?: number;
   canvasData: CanvasData;
   cloudinaryPublicId?: string;
+  // New: per-page preview support
+  previewImageUrl?: string;
+  previewPublicId?: string;
 }
 
 export interface Template {
@@ -42,6 +45,8 @@ export interface Template {
   cloudinary_public_id?: string;
   canvas_data: CanvasData;
   color?: string | null;
+  price_type?: 'free' | 'premium';
+  price: number | 0;
   // Multi-page support
   is_multipage?: boolean;
   pages?: TemplatePage[];

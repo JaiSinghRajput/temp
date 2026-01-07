@@ -170,30 +170,6 @@ export default function CustomizeECardPage() {
   ------------------------------ */
   return (
     <main className="min-h-screen bg-linear-to-br from-[#faf7f4] via-[#fdfaf7] to-[#f3e4d6]">
-      {/* Header */}
-      {/* <div className="bg-white border-b border-primary/20">
-        <div className="max-w-7xl mx-auto px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Link
-                href="/e-card"
-                className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:text-primaryDark"
-              >
-                ← Back to Templates
-              </Link>
-
-              <h1 className="text-2xl font-semibold text-gray-900">
-                Customize Invitation
-              </h1>
-
-              <p className="text-sm text-gray-500">
-                {template.name}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div> */}
-
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {error && (

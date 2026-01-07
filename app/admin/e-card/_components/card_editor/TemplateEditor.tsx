@@ -1,3 +1,12 @@
+// ============================================================================
+// REFACTORED TEMPLATE EDITOR - Key Improvements:
+// 1. Split into smaller, focused hooks
+// 2. Fix duplicate text layers bug in edit mode
+// 3. Better loading state management
+// 4. Cleaner coordinate transformation logic
+// 5. Separated concerns (UI, canvas, data management)
+// ============================================================================
+
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -9,6 +18,8 @@ import { COLOR_OPTIONS } from '@/lib/constants';
 import { ColorSelect } from '@/components/ui/color-select';
 import colorService from '@/services/color.service';
 import type { Category, Subcategory, CustomFont } from '@/lib/types';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 const DEFAULT_TEMPLATE_IMAGE = '';
 
@@ -22,6 +33,264 @@ interface TemplateEditorProps {
   onCancel?: () => void;
 }
 
+// ============================================================================
+// COORDINATE TRANSFORMATION UTILITIES
+// ============================================================================
+const CoordinateUtils = {
+  absoluteToRelative: (position: any, originalWidth: number, originalHeight: number) => {
+    if (!originalWidth || !originalHeight) return position;
+    return {
+      ...position,
+      leftPercent: (position.left / originalWidth) * 100,
+      topPercent: (position.top / originalHeight) * 100,
+      widthPercent: (position.width / originalWidth) * 100,
+      fontSizeRatio: position.fontSize ? position.fontSize / position.width : undefined,
+    };
+  },
+
+  relativeToAbsolute: (position: any, canvasWidth: number, canvasHeight: number) => {
+    const hasRelative = position.leftPercent !== undefined && position.topPercent !== undefined;
+
+    if (hasRelative) {
+      const newWidth = (position.widthPercent / 100) * canvasWidth;
+      const newFontSize = position.fontSizeRatio
+        ? Math.max(8, newWidth * position.fontSizeRatio)
+        : position.fontSize;
+
+      return {
+        ...position,
+        left: (position.leftPercent / 100) * canvasWidth,
+        top: (position.topPercent / 100) * canvasHeight,
+        width: newWidth,
+        fontSize: newFontSize,
+      };
+    }
+
+    // Old format - use as-is
+    return position;
+  },
+
+  normalizeToRelative: (textData: any, originalWidth: number, originalHeight: number) => {
+    if (textData.leftPercent !== undefined) {
+      return textData; // Already in new format
+    }
+
+    // Convert old format to new format
+    return {
+      ...textData,
+      leftPercent: (textData.left / originalWidth) * 100,
+      topPercent: (textData.top / originalHeight) * 100,
+      widthPercent: (textData.width / originalWidth) * 100,
+      fontSizeRatio: textData.fontSize ? textData.fontSize / textData.width : undefined,
+    };
+  },
+};
+
+// ============================================================================
+// CUSTOM HOOKS
+// ============================================================================
+
+// Hook for managing fonts
+const useFontManager = () => {
+  const [loadedCustomFonts, setLoadedCustomFonts] = useState<CustomFont[]>([]);
+  const [managedFonts, setManagedFonts] = useState<CustomFont[]>([]);
+  const [isFontsLoading, setIsFontsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadManagedFonts = async () => {
+      try {
+        const res = await fetch('/api/font-cdn-links');
+        const json = await res.json();
+        if (!json.success || !Array.isArray(json.data)) return;
+
+        const fonts: CustomFont[] = json.data.map((f: any) => ({
+          name: f.font_name,
+          url: f.cdn_link
+        }));
+
+        await loadCustomFonts(fonts);
+
+        if (!cancelled) {
+          setManagedFonts(fonts);
+          setLoadedCustomFonts(fonts);
+          setIsFontsLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setIsFontsLoading(false);
+        }
+      }
+    };
+
+    loadManagedFonts();
+    return () => { cancelled = true; };
+  }, []);
+
+  const addFont = async (fontName: string, cdnLink: string) => {
+    const newFont = { name: fontName.trim(), url: cdnLink.trim() };
+    setLoadedCustomFonts(prev => [...prev, newFont]);
+    setManagedFonts(prev => [...prev, newFont]);
+  };
+
+  return { loadedCustomFonts, managedFonts, isFontsLoading, addFont };
+};
+
+// Hook for managing categories and subcategories
+const useCategoryManager = () => {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const [categoryId, setCategoryId] = useState(1);
+  const [subcategoryId, setSubcategoryId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await fetch('/api/categories');
+        const json = await res.json();
+        if (json.success) setCategories(json.data);
+      } catch (e) {
+        console.error('Failed to load categories:', e);
+      }
+    };
+    loadCategories();
+  }, []);
+
+  useEffect(() => {
+    const loadSubcategories = async () => {
+      try {
+        setSubcategoryId(null);
+        const res = await fetch(`/api/subcategories?category_id=${categoryId}`);
+        const json = await res.json();
+        if (json.success) setSubcategories(json.data);
+      } catch (e) {
+        console.error('Failed to load subcategories:', e);
+      }
+    };
+    if (categoryId) loadSubcategories();
+  }, [categoryId]);
+
+  return {
+    categories,
+    subcategories,
+    categoryId,
+    setCategoryId,
+    subcategoryId,
+    setSubcategoryId
+  };
+};
+
+// Hook for managing colors
+const useColorManager = () => {
+  const [colors, setColors] = useState<Array<{ id: number; name: string; hex_code: string }>>([]);
+  const [cardColor, setCardColor] = useState('');
+
+  useEffect(() => {
+    const loadColors = async () => {
+      try {
+        const fetchedColors = await colorService.getAll();
+        if (fetchedColors.length > 0) {
+          setColors(fetchedColors);
+          setCardColor(fetchedColors[0].hex_code);
+        }
+      } catch (err) {
+        console.error('Error loading colors:', err);
+        setCardColor(COLOR_OPTIONS[0].value);
+      }
+    };
+    loadColors();
+  }, []);
+
+  return { colors, cardColor, setCardColor };
+};
+
+// ============================================================================
+// TEXT ELEMENT UTILITIES
+// ============================================================================
+const TextElementUtils = {
+  deduplicateElements: (elements: any[]) => {
+    const seen = new Set<string>();
+    return elements.filter((el: any) => {
+      const key = String(el.id ?? `${el.text}-${el.left}-${el.top}-${el.fontSize}`);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  },
+
+  extractTextElements: (canvas: Canvas, canvasWidth: number, canvasHeight: number) => {
+    const objects = canvas.getObjects();
+    return objects.filter(o => o instanceof Textbox).map((obj, i) => {
+      const t = obj as Textbox;
+      t.setCoords();
+
+      const position = CoordinateUtils.absoluteToRelative(
+        { left: t.left, top: t.top, width: t.width },
+        canvasWidth,
+        canvasHeight
+      );
+
+      return {
+        id: String(i + 1),
+        text: t.text,
+        label: `Text Field ${i + 1}`,
+        left: position.left,
+        top: position.top,
+        leftPercent: position.leftPercent,
+        topPercent: position.topPercent,
+        fontSize: t.fontSize,
+        fontSizeRatio: position.fontSizeRatio,
+        fontWeight: t.fontWeight,
+        fontFamily: t.fontFamily,
+        fill: t.fill,
+        width: position.width,
+        widthPercent: position.widthPercent,
+        scaleX: t.scaleX ?? 1,
+        scaleY: t.scaleY ?? 1,
+        textAlign: t.textAlign,
+        angle: t.angle || 0,
+        locked: (t as any).isLocked || false,
+        canvasWidth,
+        canvasHeight,
+      };
+    });
+  },
+
+  createTextbox: (textData: any, canvasWidth: number, canvasHeight: number) => {
+    const scaledPosition = CoordinateUtils.relativeToAbsolute(
+      textData,
+      canvasWidth,
+      canvasHeight
+    );
+
+    const tb = new Textbox(textData.text || '', {
+      left: scaledPosition.left,
+      top: scaledPosition.top,
+      fontSize: scaledPosition.fontSize || textData.fontSize,
+      fontFamily: textData.fontFamily,
+      fontWeight: textData.fontWeight || 'normal',
+      fill: textData.fill,
+      width: scaledPosition.width,
+      scaleX: textData.scaleX ?? 1,
+      scaleY: textData.scaleY ?? 1,
+      textAlign: textData.textAlign,
+      angle: textData.angle || 0,
+      originX: 'center',
+      originY: 'center',
+      cornerStyle: 'circle',
+      cornerColor: '#3b82f6',
+    });
+
+    (tb as any).isLocked = Boolean(textData.locked);
+    tb.setCoords();
+    return tb;
+  },
+};
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
 export default function TemplateEditor({
   mode,
   initialData,
@@ -34,8 +303,14 @@ export default function TemplateEditor({
   const containerRef = useRef<HTMLDivElement>(null);
   const fabricCanvas = useRef<Canvas | null>(null);
   const isCanvasDisposed = useRef(false);
+  const textElementsLoadedRef = useRef(false); // NEW: Track if text elements are loaded
 
-  /* ---------------- UI STATE ---------------- */
+  // Custom hooks
+  const { loadedCustomFonts, managedFonts, isFontsLoading, addFont } = useFontManager();
+  const { categories, subcategories, categoryId, setCategoryId, subcategoryId, setSubcategoryId } = useCategoryManager();
+  const { colors, cardColor, setCardColor } = useColorManager();
+
+  // UI State
   const [active, setActive] = useState<Textbox | null>(null);
   const [textValue, setTextValue] = useState('');
   const [fontSize, setFontSize] = useState(40);
@@ -44,165 +319,50 @@ export default function TemplateEditor({
   const [fontFamily, setFontFamily] = useState('Arial');
   const [isTextLocked, setIsTextLocked] = useState(false);
 
-  /* ---------------- FONT STATE ---------------- */
+  // Font search state
   const [fontSearchQuery, setFontSearchQuery] = useState('');
   const [showFontSuggestions, setShowFontSuggestions] = useState(false);
-  const [loadedCustomFonts, setLoadedCustomFonts] = useState<CustomFont[]>([]);
-  const [managedFonts, setManagedFonts] = useState<CustomFont[]>([]);
+  const [fontName, setFontName] = useState("");
+  const [cdnLink, setCdnLink] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  /* ---------------- TEMPLATE STATE ---------------- */
+  // Template state
   const [templateName, setTemplateName] = useState('');
   const [templateDescription, setTemplateDescription] = useState('');
-  const [categoryId, setCategoryId] = useState(1);
-  const [subcategoryId, setSubcategoryId] = useState<number | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
-
   const [pricingType, setPricingType] = useState<'free' | 'premium'>('free');
   const [price, setPrice] = useState('');
-  const [colors, setColors] = useState<Array<{ id: number; name: string; hex_code: string }>>([]);
-  const [cardColor, setCardColor] = useState('');
 
-  const [pages, setPages] = useState<Array<{ imageUrl: string; publicId: string; canvasData?: any }>>([]);
+  // Page and image state
+  const [pages, setPages] = useState<Array<{
+    imageUrl: string;
+    publicId: string;
+    canvasData?: any;
+    previewImageUrl?: string | null;
+    previewPublicId?: string | null
+  }>>([]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const isMultipage = pages.length > 1;
-
   const [templateImageUrl, setTemplateImageUrl] = useState(DEFAULT_TEMPLATE_IMAGE);
   const [cloudinaryPublicId, setCloudinaryPublicId] = useState<string | null>(null);
   const [backgroundId, setBackgroundId] = useState<number | null>(null);
-
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [previewPublicId, setPreviewPublicId] = useState<string | null>(null);
 
+  // Loading states
+  const [isBackgroundLoading, setIsBackgroundLoading] = useState(mode === 'edit');
+  const [isContentReady, setIsContentReady] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isUploadingPreview, setIsUploadingPreview] = useState(false);
 
-  /* ---------------- COORDINATE SCALING HELPERS ---------------- */
-  // Convert absolute coordinates to relative (percentage-based)
-  const absoluteToRelative = (position: any, originalWidth: number, originalHeight: number) => {
-    if (!originalWidth || !originalHeight) return position;
-    return {
-      ...position,
-      leftPercent: (position.left / originalWidth) * 100,
-      topPercent: (position.top / originalHeight) * 100,
-      widthPercent: (position.width / originalWidth) * 100,
-      fontSizeRatio: position.fontSize ? position.fontSize / position.width : undefined,
-    };
-  };
+  const isMultipage = pages.length > 1;
 
-  // Convert relative coordinates back to absolute based on current canvas size
-  const relativeToAbsolute = (position: any, canvasWidth: number, canvasHeight: number) => {
-    const hasRelative = position.leftPercent !== undefined && position.topPercent !== undefined;
-    
-    if (hasRelative) {
-      // New format with percentage - scale to new canvas size
-      const newWidth = (position.widthPercent / 100) * canvasWidth;
-      const newFontSize = position.fontSizeRatio 
-        ? Math.max(8, newWidth * position.fontSizeRatio)
-        : position.fontSize;
-        
-      return {
-        ...position,
-        left: (position.leftPercent / 100) * canvasWidth,
-        top: (position.topPercent / 100) * canvasHeight,
-        width: newWidth,
-        fontSize: newFontSize,
-      };
-    }
-    
-    // Old format without percentages - DON'T SCALE, use as-is
-    // This preserves existing templates on their original canvas size
-    return position;
-  };
-  
-  // Loading states - always wait for fonts to load first
-  const [isBackgroundLoading, setIsBackgroundLoading] = useState(mode === 'edit');
-  const [isFontsLoading, setIsFontsLoading] = useState(true);
-  const [isContentReady, setIsContentReady] = useState(false);
-
-
-  /* ---------------- LOAD MANAGED FONTS ---------------- */
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadManagedFonts = async () => {
-      try {
-        const res = await fetch('/api/font-cdn-links');
-        const json = await res.json();
-        if (!json.success || !Array.isArray(json.data)) return;
-        const fonts: CustomFont[] = json.data.map((f: any) => ({ name: f.font_name, url: f.cdn_link }));
-
-        // Preload all fonts from CDN upfront
-        await loadCustomFonts(fonts);
-
-        if (!cancelled) {
-          setManagedFonts(fonts);
-          setLoadedCustomFonts(fonts); // Set all managed fonts as loaded
-          setIsFontsLoading(false); // Mark fonts as loaded
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setIsFontsLoading(false); // Mark as done even on error
-        }
-      }
-    };
-
-    loadManagedFonts();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  /* ---------------- LOAD COLORS FROM DATABASE ---------------- */
-  useEffect(() => {
-    const loadColors = async () => {
-      try {
-        const fetchedColors = await colorService.getAll();
-        if (fetchedColors.length > 0) {
-          setColors(fetchedColors);
-          // Set first color as default
-          setCardColor(fetchedColors[0].hex_code);
-        }
-      } catch (err) {
-        console.error('Error loading colors:', err);
-        // Fallback to constants if fetch fails
-        setCardColor(COLOR_OPTIONS[0].value);
-      }
-    };
-    loadColors();
-  }, []);
-
-  /* ---------------- LOAD CATEGORIES ---------------- */
-  useEffect(() => {
-    const loadCategories = async () => {
-      try {
-        const res = await fetch('/api/categories');
-        const json = await res.json();
-        if (json.success) setCategories(json.data);
-      } catch (e) {
-      }
-    };
-    loadCategories();
-  }, []);
-
-  /* ---------------- LOAD SUBCATEGORIES ---------------- */
-  useEffect(() => {
-    const loadSubcategories = async () => {
-      try {
-        setSubcategoryId(null);
-        const res = await fetch(`/api/subcategories?category_id=${categoryId}`);
-        const json = await res.json();
-        if (json.success) setSubcategories(json.data);
-      } catch (e) {
-      }
-    };
-    if (categoryId) loadSubcategories();
-  }, [categoryId]);
-
-  /* ---------------- INIT FROM EDIT DATA ---------------- */
+  // ============================================================================
+  // INITIALIZE FROM EDIT DATA
+  // ============================================================================
   useEffect(() => {
     if (mode !== 'edit' || !initialData) return;
+
+    textElementsLoadedRef.current = false; // Reset flag
 
     setTemplateName(initialData.name);
     setTemplateDescription(initialData.description || '');
@@ -215,13 +375,14 @@ export default function TemplateEditor({
     setPreviewImageUrl(initialData.thumbnail_uri || null);
     setPreviewPublicId(initialData.thumbnail_public_id || null);
 
-    // Ensure we have a valid image URL before setting it
     let imageUrl = initialData.template_image_url;
-    
+
     if (initialData.is_multipage && initialData.pages?.length) {
       const normalizedPages = initialData.pages.map((p: any) => ({
         imageUrl: p.image_url || p.imageUrl,
         publicId: (p.cloudinary_public_id || p.cloudinaryPublicId) ?? null,
+        previewImageUrl: p.preview_image_url || p.previewImageUrl || null,
+        previewPublicId: p.preview_public_id || p.previewPublicId || null,
         canvasData: {
           textElements: p.canvas_data?.textElements || p.canvasData?.textElements || [],
           canvasWidth: p.canvas_data?.canvasWidth || p.canvasData?.canvasWidth,
@@ -232,7 +393,6 @@ export default function TemplateEditor({
       imageUrl = normalizedPages[0]?.imageUrl || imageUrl;
     }
 
-    // Validate and set image URL
     if (imageUrl && imageUrl !== DEFAULT_TEMPLATE_IMAGE) {
       setTemplateImageUrl(imageUrl);
       setCloudinaryPublicId(initialData.cloudinary_public_id || null);
@@ -242,7 +402,9 @@ export default function TemplateEditor({
     }
   }, [mode, initialData]);
 
-  /* ---------------- CANVAS INIT ---------------- */
+  // ============================================================================
+  // CANVAS INITIALIZATION
+  // ============================================================================
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
 
@@ -277,7 +439,6 @@ export default function TemplateEditor({
       const target = e.target;
       if (!(target instanceof Textbox)) return;
 
-      // Store previous dimensions if not already stored
       if (!(target as any)._prevWidth) {
         (target as any)._prevWidth = target.width;
         (target as any)._prevHeight = target.height;
@@ -287,25 +448,19 @@ export default function TemplateEditor({
 
       const prevWidth = (target as any)._prevWidth;
       const prevHeight = (target as any)._prevHeight;
-      const prevFontSize = (target as any)._prevFontSize;
       const currentWidth = target.width;
       const currentHeight = target.height;
       const currentFontSize = target.fontSize || 40;
 
-      // Only apply font size scaling if BOTH width and height changed
-      // (indicates corner drag, not edge drag)
       const widthChanged = Math.abs(currentWidth - prevWidth) > 1;
       const heightChanged = Math.abs(currentHeight - prevHeight) > 1;
 
       if (widthChanged && heightChanged) {
-        // Calculate area scale factor (based on width × height)
         const prevArea = prevWidth * prevHeight;
         const currentArea = currentWidth * currentHeight;
         const areaScaleFactor = currentArea / prevArea;
-
-        // Apply square root of area scale factor to font size
         const newFontSize = Math.max(8, Math.round(currentFontSize * Math.sqrt(areaScaleFactor)));
-        
+
         if (newFontSize !== currentFontSize) {
           target.set({ fontSize: newFontSize, dirty: true, objectCaching: false } as any);
           (target as any)._clearCache?.();
@@ -316,15 +471,11 @@ export default function TemplateEditor({
           setActive({ ...target } as Textbox);
         }
 
-        // Update stored dimensions for next modification
         (target as any)._prevFontSize = newFontSize;
       }
 
-      // Always update stored dimensions
       (target as any)._prevWidth = currentWidth;
       (target as any)._prevHeight = currentHeight;
-      
-      // Ensure position is persisted by updating coordinates
       target.setCoords();
     };
 
@@ -343,7 +494,9 @@ export default function TemplateEditor({
     };
   }, []);
 
-  /* ---------------- LOAD BACKGROUND ---------------- */
+  // ============================================================================
+  // LOAD BACKGROUND
+  // ============================================================================
   useEffect(() => {
     if (!fabricCanvas.current || !containerRef.current) return;
 
@@ -358,185 +511,149 @@ export default function TemplateEditor({
           isCancelled: () => isCanvasDisposed.current,
           onSuccess: () => {
             setIsBackgroundLoading(false);
-            // Don't set isContentReady here - wait for the coordinating effect
           },
           onError: () => {
             setIsBackgroundLoading(false);
             if (templateImageUrl !== DEFAULT_TEMPLATE_IMAGE) {
               alert('Failed to load background image. Using default.');
             }
-            // Don't set isContentReady here - wait for the coordinating effect
           },
         });
       } catch (err) {
         setIsBackgroundLoading(false);
-        // Don't set isContentReady here - wait for the coordinating effect
       }
     };
 
     loadBackground();
   }, [templateImageUrl]);
 
-  /* ---------------- COORDINATE CONTENT READY STATE ---------------- */
+  // ============================================================================
+  // COORDINATE CONTENT READY STATE
+  // ============================================================================
   useEffect(() => {
-    // Only set content ready when both fonts and background are loaded
     if (!isFontsLoading && !isBackgroundLoading) {
       setIsContentReady(true);
     }
   }, [isFontsLoading, isBackgroundLoading]);
 
-  /* ---------------- LOAD INITIAL TEXT (EDIT MODE) ---------------- */
+  // ============================================================================
+  // LOAD TEXT ELEMENTS (EDIT MODE) - FIXED DUPLICATE BUG
+  // ============================================================================
   useEffect(() => {
+    // CRITICAL FIX: Only run once and only when ready
     if (!fabricCanvas.current || mode !== 'edit' || !initialData) return;
-    
-    // Don't load text until fonts are loaded
-    if (isFontsLoading) {
-      return;
-    }
+    if (isFontsLoading || !isContentReady) return;
+    if (textElementsLoadedRef.current) return; // Already loaded
 
-    const textElements = initialData.canvas_data?.textElements || [];
-    if (textElements.length === 0) return;
+    textElementsLoadedRef.current = true; // Mark as loaded
 
     const loadTextElements = async () => {
-      // Check if this is an old format template (without percentages)
-      const isOldFormat = textElements.length > 0 && textElements[0].leftPercent === undefined;
+      const initialPageText = initialData.pages?.[0]?.canvasData?.textElements || [];
+      const singlePageText = initialData.canvas_data?.textElements || [];
+
+      // For multipage, ONLY use page data to avoid duplication
+      const rawTextElements = initialData.is_multipage && initialPageText.length
+        ? initialPageText
+        : singlePageText;
+
+      if (!rawTextElements.length) return;
+
+      const dedupedTextElements = TextElementUtils.deduplicateElements(rawTextElements);
+
       const originalCanvasWidth = initialData.canvas_data?.canvasWidth || 800;
       const originalCanvasHeight = initialData.canvas_data?.canvasHeight || 600;
 
-      // Convert old format to new format with percentages
-      const normalizedElements = textElements.map((textData: any) => {
-        if (textData.leftPercent !== undefined) {
-          // Already in new format
-          return textData;
-        }
-        
-        // Old format - convert to percentages
-        return {
-          ...textData,
-          leftPercent: (textData.left / originalCanvasWidth) * 100,
-          topPercent: (textData.top / originalCanvasHeight) * 100,
-          widthPercent: (textData.width / originalCanvasWidth) * 100,
-          fontSizeRatio: textData.fontSize ? textData.fontSize / textData.width : undefined,
-        };
-      });
+      // Normalize to new format with percentages
+      const normalizedElements = dedupedTextElements.map((textData: any) =>
+        CoordinateUtils.normalizeToRelative(textData, originalCanvasWidth, originalCanvasHeight)
+      );
 
-      // Collect all unique fonts from text elements
-      const uniqueFonts = Array.from(new Set(normalizedElements.map((t: any) => t.fontFamily).filter(Boolean)));
+      // Collect and load fonts
+      const uniqueFonts = Array.from(
+        new Set(normalizedElements.map((t: any) => t.fontFamily).filter(Boolean))
+      );
       const fontsToLoad: CustomFont[] = [];
-      
-      // First try to find fonts in managedFonts, then in loadedCustomFonts
+
       for (const fontName of uniqueFonts) {
-        const fontDef = managedFonts.find((f) => f.name === fontName) || loadedCustomFonts.find((f) => f.name === fontName);
-        if (fontDef) {
-          fontsToLoad.push(fontDef);
-        }
+        const fontDef = managedFonts.find(f => f.name === fontName) ||
+          loadedCustomFonts.find(f => f.name === fontName);
+        if (fontDef) fontsToLoad.push(fontDef);
       }
 
-      // Also check if canvas_data has customFonts array
       const canvasCustomFonts = initialData.canvas_data?.customFonts || [];
-      if (Array.isArray(canvasCustomFonts) && canvasCustomFonts.length > 0) {
+      if (Array.isArray(canvasCustomFonts)) {
         for (const font of canvasCustomFonts) {
-          // Check if already in fontsToLoad
-          if (!fontsToLoad.some((f) => f.name === font.name)) {
+          if (!fontsToLoad.some(f => f.name === font.name)) {
             fontsToLoad.push(font);
           }
         }
       }
 
-      // Load fonts from CDN and wait for them to be ready
       if (fontsToLoad.length > 0) {
         try {
           await loadCustomFonts(fontsToLoad);
-          
-          // Wait for all fonts to be loaded in document
-          const fontLoadPromises = fontsToLoad.map((font) =>
+          const fontLoadPromises = fontsToLoad.map(font =>
             document.fonts.load(`16px "${font.name}"`)
           );
           await Promise.all(fontLoadPromises);
-          
-          // Extra wait for document.fonts.ready
           await document.fonts.ready;
         } catch (err) {
+          console.error('Font loading error:', err);
         }
       }
 
-      // Now create textboxes with loaded fonts
+      // Create textboxes
       normalizedElements.forEach((textData: any) => {
-        // Always use relativeToAbsolute since we've normalized to new format
-        const scaledPosition = relativeToAbsolute(textData, fabricCanvas.current?.width || 800, fabricCanvas.current?.height || 600);
-        
-        const tb = new Textbox(textData.text || '', {
-          left: scaledPosition.left,
-          top: scaledPosition.top,
-          fontSize: scaledPosition.fontSize || textData.fontSize,
-          fontFamily: textData.fontFamily,
-          fontWeight: textData.fontWeight || 'normal',
-          fill: textData.fill,
-          width: scaledPosition.width,
-          scaleX: textData.scaleX ?? 1,
-          scaleY: textData.scaleY ?? 1,
-          textAlign: textData.textAlign,
-          angle: textData.angle || 0,
-          originX: 'center',
-          originY: 'center',
-          cornerStyle: 'circle',
-          cornerColor: '#3b82f6',
-        });
-        (tb as any).isLocked = Boolean(textData.locked);
-        // Ensure coordinates are properly set
-        tb.setCoords();
+        const tb = TextElementUtils.createTextbox(
+          textData,
+          fabricCanvas.current?.width || 800,
+          fabricCanvas.current?.height || 600
+        );
         fabricCanvas.current?.add(tb);
       });
 
       fabricCanvas.current?.requestRenderAll();
-      // Don't set isContentReady here - the coordinating effect will handle it
     };
 
-    loadTextElements().catch((err) => {
+    loadTextElements().catch(err => {
       console.error('Error loading text elements:', err);
-      // Don't set isContentReady here - the coordinating effect will handle it
     });
-  }, [initialData, mode, managedFonts, loadedCustomFonts, isFontsLoading]);
+  }, [initialData, mode, managedFonts, loadedCustomFonts, isFontsLoading, isContentReady]);
 
-  /* ---------------- HANDLERS ---------------- */
+  // ============================================================================
+  // EVENT HANDLERS
+  // ============================================================================
   const handleAttributeChange = async (key: string, value: any) => {
     if (!fabricCanvas.current) return;
     const target = fabricCanvas.current.getActiveObject?.() as Textbox | null;
     if (!target) return;
 
     if (key === 'fontFamily') {
-      const fontDef = managedFonts.find((f) => f.name === value) || loadedCustomFonts.find((f) => f.name === value);
+      const fontDef = managedFonts.find(f => f.name === value) ||
+        loadedCustomFonts.find(f => f.name === value);
       if (!fontDef) {
         alert('This font is not available in the database.');
         return;
       }
-      
+
       try {
-        // Load the font from CDN
         await loadCustomFonts([fontDef]);
-        
-        // Wait for font to be ready in document
         await document.fonts.load(`${target.fontSize || 40}px "${value}"`);
         await document.fonts.ready;
-        
-        // Apply the font to the target
-        target.set({ 
-          fontFamily: value, 
-          dirty: true, 
-          objectCaching: false 
+
+        target.set({
+          fontFamily: value,
+          dirty: true,
+          objectCaching: false
         } as any);
-        
+
         setFontFamily(value);
-        
-        // Force complete re-render cycle
+
         (target as any)._clearCache?.();
         target.initDimensions();
         target.setCoords();
-        
-        // Re-render canvas multiple times to ensure font is applied
         fabricCanvas.current.requestRenderAll();
-        
-        // Additional render after a short delay for CDN fonts
+
         setTimeout(() => {
           if (fabricCanvas.current && !isCanvasDisposed.current) {
             (target as any)._clearCache?.();
@@ -545,21 +662,17 @@ export default function TemplateEditor({
             fabricCanvas.current.requestRenderAll();
           }
         }, 150);
-        
-        // Update state to trigger re-render
+
         setActive(target);
-        
-        return; // Exit early for font changes
+        return;
       } catch (err) {
         alert('Failed to load font. Please try again.');
         return;
       }
     }
 
-    // For non-font changes
     const updateObj: any = { [key]: value, dirty: true, objectCaching: false };
-    
-    // Link element size with font size
+
     if (key === 'fontSize') {
       const currentWidth = (target.width || 250) as number;
       const currentFontSize = (target.fontSize || 40) as number;
@@ -573,10 +686,8 @@ export default function TemplateEditor({
     } else if (key === 'fontWeight') {
       setBold(value === 'bold');
     }
-    
+
     target.set(updateObj);
-    
-    // Clear cache and update dimensions
     (target as any)._clearCache?.();
     target.initDimensions();
     target.setCoords();
@@ -609,6 +720,30 @@ export default function TemplateEditor({
     canvas.add(tb);
     canvas.setActiveObject(tb);
     canvas.requestRenderAll();
+  };
+
+  const handleAddFont = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fontName.trim() || !cdnLink.trim()) return;
+
+    setSubmitting(true);
+    try {
+      await fetch("/api/font-cdn-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          font_name: fontName.trim(),
+          cdn_link: cdnLink.trim(),
+        }),
+      });
+      await addFont(fontName, cdnLink);
+      setFontName("");
+      setCdnLink("");
+    } catch (err) {
+      alert('Failed to add font');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -645,30 +780,15 @@ export default function TemplateEditor({
       setCloudinaryPublicId(result.publicId);
 
       if (pages.length > 0) {
-        const objects = fabricCanvas.current?.getObjects() || [];
-        const textElements = objects.filter((obj) => obj instanceof Textbox).map((obj, i) => {
-          const textbox = obj as Textbox;
-          return {
-            id: String(i + 1),
-            text: textbox.text || '',
-            label: `Text Field ${i + 1}`,
-            left: textbox.left,
-            top: textbox.top,
-            fontSize: textbox.fontSize,
-            fontWeight: textbox.fontWeight,
-            fontFamily: textbox.fontFamily,
-            fill: textbox.fill,
-            width: textbox.width,
-            scaleX: textbox.scaleX ?? 1,
-            scaleY: textbox.scaleY ?? 1,
-            textAlign: textbox.textAlign,
-            angle: textbox.angle || 0,
-            locked: (textbox as any).isLocked || false,
-          };
-        });
+        const textElements = TextElementUtils.extractTextElements(
+          fabricCanvas.current!,
+          fabricCanvas.current?.width || 800,
+          fabricCanvas.current?.height || 600
+        );
 
         const updatedPages = [...pages];
         updatedPages[currentPageIndex] = {
+          ...updatedPages[currentPageIndex],
           imageUrl: result.secureUrl,
           publicId: result.publicId,
           canvasData: {
@@ -689,7 +809,41 @@ export default function TemplateEditor({
       setIsUploadingImage(false);
     }
   };
+  const absoluteToRelative = (position: any, originalWidth: number, originalHeight: number) => {
+    if (!originalWidth || !originalHeight) return position;
+    return {
+      ...position,
+      leftPercent: (position.left / originalWidth) * 100,
+      topPercent: (position.top / originalHeight) * 100,
+      widthPercent: (position.width / originalWidth) * 100,
+      fontSizeRatio: position.fontSize ? position.fontSize / position.width : undefined,
+    };
+  };
 
+  // Convert relative coordinates back to absolute based on current canvas size
+  const relativeToAbsolute = (position: any, canvasWidth: number, canvasHeight: number) => {
+    const hasRelative = position.leftPercent !== undefined && position.topPercent !== undefined;
+
+    if (hasRelative) {
+      // New format with percentage - scale to new canvas size
+      const newWidth = (position.widthPercent / 100) * canvasWidth;
+      const newFontSize = position.fontSizeRatio
+        ? Math.max(8, newWidth * position.fontSizeRatio)
+        : position.fontSize;
+
+      return {
+        ...position,
+        left: (position.leftPercent / 100) * canvasWidth,
+        top: (position.topPercent / 100) * canvasHeight,
+        width: newWidth,
+        fontSize: newFontSize,
+      };
+    }
+
+    // Old format without percentages - DON'T SCALE, use as-is
+    // This preserves existing templates on their original canvas size
+    return position;
+  };
   const handlePreviewUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -714,25 +868,64 @@ export default function TemplateEditor({
     }
   };
 
+  const handlePagePreviewUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validation = validateImageFile(file);
+    if (!validation.valid) {
+      alert(validation.error);
+      return;
+    }
+
+    setIsUploadingPreview(true);
+    const input = e.target;
+    try {
+      const uploadResult = await uploadToCloudinary(file);
+      const updated = [...pages];
+      if (!updated[currentPageIndex]) {
+        updated[currentPageIndex] = {
+          imageUrl: '',
+          publicId: '',
+          canvasData: undefined,
+          previewImageUrl: uploadResult.secureUrl,
+          previewPublicId: uploadResult.publicId,
+        };
+      } else {
+        updated[currentPageIndex] = {
+          ...updated[currentPageIndex],
+          previewImageUrl: uploadResult.secureUrl,
+          previewPublicId: uploadResult.publicId,
+        };
+      }
+      setPages(updated);
+    } catch (error: any) {
+      alert(error.message || 'Failed to upload page preview');
+    } finally {
+      setIsUploadingPreview(false);
+      input.value = '';
+    }
+  };
+
   const buildCurrentPageSnapshot = () => {
     if (!fabricCanvas.current || !cloudinaryPublicId) return null;
 
     const objects = fabricCanvas.current.getObjects();
     const canvasWidth = fabricCanvas.current.width;
     const canvasHeight = fabricCanvas.current.height;
-    
+
     const textElements = objects.filter((obj) => obj instanceof Textbox).map((obj, i) => {
       const textbox = obj as Textbox;
       // Force coordinate calculation to ensure positions are accurate
       textbox.setCoords();
-      
+
       // Convert to relative coordinates
       const position = absoluteToRelative({
         left: textbox.left,
         top: textbox.top,
         width: textbox.width,
       }, canvasWidth, canvasHeight);
-      
+
       return {
         id: String(i + 1),
         text: textbox.text || '',
@@ -863,19 +1056,19 @@ export default function TemplateEditor({
       const objects = fabricCanvas.current.getObjects();
       const currentCanvasWidth = fabricCanvas.current.width;
       const currentCanvasHeight = fabricCanvas.current.height;
-      
+
       const textElements = objects.filter((obj) => obj instanceof Textbox).map((obj, i) => {
         const textbox = obj as Textbox;
         // Force coordinate calculation to ensure positions are accurate
         textbox.setCoords();
-        
+
         // Convert to relative coordinates
         const position = absoluteToRelative({
           left: textbox.left,
           top: textbox.top,
           width: textbox.width,
         }, currentCanvasWidth, currentCanvasHeight);
-        
+
         return {
           id: String(i + 1),
           text: textbox.text || '',
@@ -900,7 +1093,7 @@ export default function TemplateEditor({
           canvasHeight: currentCanvasHeight,
         };
       });
-      
+
       // Create a new pages array with updated current page data
       const updatedPages = [...pages];
       updatedPages[currentPageIndex] = {
@@ -948,10 +1141,10 @@ export default function TemplateEditor({
             pages[index].canvasData.textElements.forEach((element: any) => {
               // Only scale if using new percentage format
               const hasPercentages = element.leftPercent !== undefined && element.topPercent !== undefined;
-              const scaledPosition = hasPercentages 
+              const scaledPosition = hasPercentages
                 ? relativeToAbsolute(element, newCanvasWidth, newCanvasHeight)
                 : element;
-              
+
               const tb = new Textbox(element.text, {
                 left: scaledPosition.left,
                 top: scaledPosition.top,
@@ -998,19 +1191,19 @@ export default function TemplateEditor({
       const objects = fabricCanvas.current.getObjects();
       const canvasWidth = fabricCanvas.current.width;
       const canvasHeight = fabricCanvas.current.height;
-      
+
       const textElements = objects.filter((o) => o instanceof Textbox).map((obj, i) => {
         const t = obj as Textbox;
         // Force coordinate calculation to ensure positions are accurate
         t.setCoords();
-        
+
         // Convert to relative coordinates for responsive scaling
         const position = absoluteToRelative({
           left: t.left,
           top: t.top,
           width: t.width,
         }, canvasWidth, canvasHeight);
-        
+
         return {
           id: String(i + 1),
           text: t.text,
@@ -1051,8 +1244,8 @@ export default function TemplateEditor({
         finalPages = updatedPages;
       }
 
-      let thumbSecureUrl = previewImageUrl;
-      let thumbPublicId = previewPublicId;
+      let thumbSecureUrl = previewImageUrl || pages[0]?.previewImageUrl;
+      let thumbPublicId = previewPublicId || pages[0]?.previewPublicId;
 
       if (!thumbSecureUrl) {
         const thumbnailDataURL = fabricCanvas.current.toDataURL({ format: 'png', multiplier: 0.3 });
@@ -1073,13 +1266,15 @@ export default function TemplateEditor({
           backgroundId: null,
           cloudinaryPublicId: page.publicId,
           imageUrl: page.imageUrl,
+          previewImageUrl: page.previewImageUrl || undefined,
+          previewPublicId: page.previewPublicId || undefined,
           canvasData: page.canvasData ? { ...page.canvasData } : {
             textElements: [],
             canvasWidth: 800,
             canvasHeight: 600,
           },
         }));
-        
+
         // For multipage, also include the first page's content in single-page format for backend compatibility
         if (finalPages[0]?.canvasData?.textElements) {
           canvasData.textElements = finalPages[0].canvasData.textElements;
@@ -1168,113 +1363,118 @@ export default function TemplateEditor({
             ✕
           </button>
         </div>
-
         <div className="bg-purple-50 p-4 rounded-xl space-y-3 border border-purple-100">
-          <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">
-            Card Information
-          </label>
-          <input
-            type="text"
-            placeholder="Template Name *"
-            className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400"
-            value={templateName}
-            onChange={(e) => setTemplateName(e.target.value)}
-          />
-          <textarea
-            placeholder="Description (optional)"
-            className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 resize-none"
-            rows={2}
-            value={templateDescription}
-            onChange={(e) => setTemplateDescription(e.target.value)}
-          />
-          <div className="grid grid-cols-2 gap-3">
+          <details>
+            <summary className="cursor-pointer text-purple-700 font-semibold mb-4">
+              Card Settings
+            </summary>
             <div>
-              <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Category</label>
-              <select
-                className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 bg-white"
-                value={categoryId}
-                onChange={(e) => setCategoryId(parseInt(e.target.value, 10) || 1)}
-              >
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Subcategory</label>
-              <select
-                className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 bg-white"
-                value={subcategoryId ?? ''}
-                onChange={(e) => setSubcategoryId(e.target.value ? parseInt(e.target.value, 10) : null)}
-              >
-                <option value="">None</option>
-                {subcategories.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Color */}
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Card Color</label>
-            <ColorSelect
-              options={colors.length > 0 ? colors.map(c => ({ label: c.name, value: c.hex_code })) : COLOR_OPTIONS}
-              value={cardColor}
-              onChange={setCardColor}
-              className="w-full"
-              selectClassName="w-full border-purple-200 focus:ring-purple-400"
-            />
-            <div className="text-xs text-gray-600">Selected: {cardColor}</div>
-          </div>
-
-          <div className="border-t pt-3 space-y-3">
-            <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Pricing</label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="pricing"
-                  value="free"
-                  checked={pricingType === 'free'}
-                  onChange={(e) => setPricingType(e.target.value as 'free' | 'premium')}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm">Free</span>
+              <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">
+                Card Information
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="pricing"
-                  value="premium"
-                  checked={pricingType === 'premium'}
-                  onChange={(e) => setPricingType(e.target.value as 'free' | 'premium')}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm">paid</span>
-              </label>
-            </div>
-
-            {pricingType === 'premium' && (
-              <div>
-                <label className="text-xs font-semibold text-purple-700 block mb-1">Price (₹)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Enter price"
-                  className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                />
+              <input
+                type="text"
+                placeholder="Template Name *"
+                className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+              />
+              <textarea
+                placeholder="Description (optional)"
+                className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+                rows={2}
+                value={templateDescription}
+                onChange={(e) => setTemplateDescription(e.target.value)}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Category</label>
+                  <select
+                    className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(parseInt(e.target.value, 10) || 1)}
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Subcategory</label>
+                  <select
+                    className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                    value={subcategoryId ?? ''}
+                    onChange={(e) => setSubcategoryId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                  >
+                    <option value="">None</option>
+                    {subcategories.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            )}
-          </div>
 
+              {/* Color */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Card Color</label>
+                <ColorSelect
+                  options={colors.length > 0 ? colors.map(c => ({ label: c.name, value: c.hex_code })) : COLOR_OPTIONS}
+                  value={cardColor}
+                  onChange={setCardColor}
+                  className="w-full"
+                  selectClassName="w-full border-purple-200 focus:ring-purple-400"
+                />
+                <div className="text-xs text-gray-600">Selected: {cardColor}</div>
+              </div>
+
+              <div className="border-t pt-3 space-y-3">
+                <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Pricing</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pricing"
+                      value="free"
+                      checked={pricingType === 'free'}
+                      onChange={(e) => setPricingType(e.target.value as 'free' | 'premium')}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm">Free</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pricing"
+                      value="premium"
+                      checked={pricingType === 'premium'}
+                      onChange={(e) => setPricingType(e.target.value as 'free' | 'premium')}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm">paid</span>
+                  </label>
+                </div>
+
+                {pricingType === 'premium' && (
+                  <div>
+                    <label className="text-xs font-semibold text-purple-700 block mb-1">Price (₹)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Enter price"
+                      className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          </details>
           <div className="space-y-2">
             <label className="text-xs font-semibold text-purple-700">
               {pages.length > 0 ? `Page ${currentPageIndex + 1} Background` : 'Card Background Image'}
@@ -1294,51 +1494,54 @@ export default function TemplateEditor({
               )}
             </label>
           </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-purple-700">Preview / Card Image (optional)</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handlePreviewUpload}
-              className="hidden"
-              id="preview-upload"
-            />
-            <div className="flex gap-2">
-              <label
-                htmlFor="preview-upload"
-                className="flex-1 h-10 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {isUploadingPreview ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Uploading...
-                  </>
-                ) : (
-                  '📤 Upload Preview'
-                )}
-              </label>
-
-              {previewImageUrl && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPreviewImageUrl(null);
-                    setPreviewPublicId(null);
-                  }}
-                  className="h-10 px-3 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold border border-gray-200 hover:bg-gray-200"
+          {pages.length <= 0 && (
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-purple-700">Preview / Card Image (optional)</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePreviewUpload}
+                className="hidden"
+                id="preview-upload"
+              />
+              <div className="flex gap-2">
+                <label
+                  htmlFor="preview-upload"
+                  className="flex-1 h-10 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  Use generated
-                </button>
+                  {isUploadingPreview ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Uploading...
+                    </>
+                  ) : (
+                    '📤 Upload Preview'
+                  )}
+                </label>
+
+                {previewImageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPreviewImageUrl(null);
+                      setPreviewPublicId(null);
+                    }}
+                    className="h-10 px-3 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold border border-gray-200 hover:bg-gray-200"
+                  >
+                    Use generated
+                  </button>
+                )}
+              </div>
+              {previewImageUrl && (
+                <details>
+                  <summary className='text-blue-500'>Preview Image</summary>
+                  <div className="relative h-32 bg-gray-50 border rounded-lg overflow-hidden">
+                    <img src={previewImageUrl} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                </details>
               )}
             </div>
-
-            {previewImageUrl && (
-              <div className="relative h-32 bg-gray-50 border rounded-lg overflow-hidden">
-                <img src={previewImageUrl} alt="Preview" className="w-full h-full object-cover" />
-              </div>
-            )}
-          </div>
+          )}
 
           {pages.length > 0 && (
             <div className="space-y-2 border-t pt-3">
@@ -1347,11 +1550,10 @@ export default function TemplateEditor({
                 {pages.map((page, idx) => (
                   <div
                     key={idx}
-                    className={`flex items-center justify-between p-2 rounded ${
-                      currentPageIndex === idx
-                        ? 'bg-purple-200 border border-purple-400'
-                        : 'bg-white border border-gray-200 hover:bg-gray-100'
-                    }`}
+                    className={`flex items-center justify-between p-2 rounded ${currentPageIndex === idx
+                      ? 'bg-purple-200 border border-purple-400'
+                      : 'bg-white border border-gray-200 hover:bg-gray-100'
+                      }`}
                   >
                     <button onClick={() => switchPage(idx)} className="text-sm font-semibold flex-1 text-left">
                       Page {idx + 1}
@@ -1361,6 +1563,51 @@ export default function TemplateEditor({
                     </button>
                   </div>
                 ))}
+              </div>
+              {/* Current page preview upload */}
+              <div className="mt-3 space-y-2">
+                <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Current Page Preview (optional)</label>
+                <input type="file" accept="image/*" onChange={handlePagePreviewUpload} className="hidden" id="page-preview-upload" />
+                <div className="flex gap-2">
+                  <label
+                    htmlFor="page-preview-upload"
+                    className="flex-1 h-10 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-sm font-bold transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {isUploadingPreview ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Uploading...
+                      </>
+                    ) : (
+                      '📤 Upload Page Preview'
+                    )}
+                  </label>
+                  {pages[currentPageIndex]?.previewImageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = [...pages];
+                        updated[currentPageIndex] = {
+                          ...updated[currentPageIndex],
+                          previewImageUrl: null,
+                          previewPublicId: null,
+                        };
+                        setPages(updated);
+                      }}
+                      className="h-10 px-3 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold border border-gray-200 hover:bg-gray-200"
+                    >
+                      Use generated
+                    </button>
+                  )}
+                </div>
+                {pages[currentPageIndex]?.previewImageUrl && (
+                  <details>
+                    <summary className='cursor-pointer'>Page {currentPageIndex + 1} Preview Image</summary>
+                    <div className="relative bg-gray-50 border rounded-lg overflow-hidden">
+                      <img src={pages[currentPageIndex]?.previewImageUrl || ''} alt={`Page ${currentPageIndex + 1} preview`} className="w-full h-full object-cover" />
+                    </div>
+                  </details>
+                )}
               </div>
             </div>
           )}
@@ -1458,7 +1705,7 @@ export default function TemplateEditor({
                     value={fontSize}
                     onChange={(e) => handleAttributeChange('fontSize', parseInt(e.target.value) || 1)}
                   />
-                  <div className="text-xs text-center mt-1">{fontSize}px</div>
+                  <input type="number" className="w-full p-2 border rounded-lg text-sm" value={fontSize} onChange={(e) => handleAttributeChange('fontSize', parseInt(e.target.value))} />
                 </div>
 
                 <div>
@@ -1475,9 +1722,8 @@ export default function TemplateEditor({
                   <label className="text-xs mb-1 block">Bold</label>
                   <button
                     onClick={toggleBold}
-                    className={`w-full h-10 rounded-lg font-bold ${
-                      bold ? 'bg-gray-900 text-white' : 'bg-gray-100 border'
-                    }`}
+                    className={`w-full h-10 rounded-lg font-bold ${bold ? 'bg-gray-900 text-white' : 'bg-gray-100 border'
+                      }`}
                   >
                     B
                   </button>
@@ -1536,15 +1782,21 @@ export default function TemplateEditor({
                     setIsTextLocked(isLocked);
                   }
                 }}
-                className={`w-full h-10 rounded-lg font-bold ${
-                  isTextLocked ? 'bg-red-600 text-white' : 'bg-green-500 text-white'
-                }`}
+                className={`w-full h-10 rounded-lg font-bold ${isTextLocked ? 'bg-red-600 text-white' : 'bg-green-500 text-white'
+                  }`}
               >
                 {isTextLocked ? '🔒 Locked' : '🔓 Unlocked'}
               </button>
               <p className="text-xs text-center mt-2">{isTextLocked ? 'Users cannot edit' : 'Users can edit'}</p>
             </div>
-
+            <details>
+              <summary className='cursor-pointer text-blue-500'>Add Font</summary>
+              <div className='flex flex-col gap-1 items-center'>
+                <Input type="text" name="fontName" id="fontName" placeholder='Enter Font Name' onChange={(e) => { setFontName(e.target.value) }} />
+                <Input type="text" name="fontCDN" id="fontCDN" placeholder='Enter CDN Link' onChange={(e) => { setCdnLink(e.target.value) }} />
+                <Button className="w-20" type="submit" onClick={handleAddFont}>Add Font</Button>
+              </div>
+            </details>
             <button
               onClick={() => {
                 fabricCanvas.current?.remove(active);
@@ -1563,6 +1815,6 @@ export default function TemplateEditor({
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 }

@@ -404,7 +404,7 @@ export default function TextEditor({
             ) : (
               <div className="relative">
                 {/* Page Navigation for Multipage */}
-                {isMultipage && (
+                {isMultipage ? (
                   <div className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3 bg-white/95 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg border border-gray-200">
                     <button
                       onClick={() => onPageChange?.(Math.max(0, currentPage - 1))}
@@ -430,7 +430,7 @@ export default function TextEditor({
                       </svg>
                     </button>
                   </div>
-                )}
+                ):""}
 
                 <div ref={containerRef} className="flex items-center justify-center bg-gray-50 p-6 min-h-100">
                   <canvas
@@ -445,9 +445,9 @@ export default function TextEditor({
 
         {/* Text Editor Sidebar (desktop) */}
         <div className="lg:col-span-1 hidden lg:block">
-          <div className="bg-white rounded-xl shadow-lg p-6 sticky top-4">
+          <div className="bg-white rounded-xl shadow-lg p-6 sticky top-30">
             {selectedTextElement && !isSelectedLocked ? (
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {/* Text Area */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -471,7 +471,7 @@ export default function TextEditor({
                 </p>
               </div>
             )}
-            {isMultipage && (
+            {isMultipage ? (
               <div className="mt-6 flex items-center justify-between">
                 {/* Previous */}
                 <button
@@ -505,10 +505,10 @@ export default function TextEditor({
                 </button>
               </div>
 
-            )}
+            ):""}
 
             {/* Publish Button - Only show on last page for multipage templates */}
-            {(!isMultipage || currentPage === totalPages - 1) && (
+            {(!isMultipage || currentPage === totalPages - 1) ? (
               <div className="mt-6 space-y-3">
                 <button
                   onClick={handlePublish}
@@ -520,7 +520,7 @@ export default function TextEditor({
                 </button>
 
                 {/* PDF Download for Multipage */}
-                {isMultipage && (
+                {isMultipage ? (
                   <button
                     onClick={handleDownloadPdf}
                     disabled={isGeneratingPdf || isSaving || isLoading}
@@ -528,9 +528,9 @@ export default function TextEditor({
                   >
                     {isGeneratingPdf ? 'Generating PDF...' : '📄 Download as PDF'}
                   </button>
-                )}
+                ):""}
               </div>
-            )}
+            ):""}
 
           </div>
         </div>

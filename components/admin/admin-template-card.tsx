@@ -27,14 +27,22 @@ export function AdminTemplateCard({
     e.stopPropagation();
     onEdit(template.id);
   };
-
+  const getCardImage = () => {
+    if (template.pages && template.pages.length > 0) {
+      return template.pages[0].previewImageUrl || template.pages[0].imageUrl;
+    }
+    if (template.template_image_url) {
+      return template.thumbnail_uri || template.template_image_url;
+    }
+    return null;
+  }
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden transition hover:shadow-md w-70">
       {/* Image */}
       <div className="relative bg-gray-100 w-full">
         {template.template_image_url ? (
           <img
-            src={template.template_image_url}
+            src={getCardImage()!}
             alt={template.name}
             className="w-full h-full object-cover"
             loading="lazy"
@@ -48,11 +56,10 @@ export function AdminTemplateCard({
         {/* Status */}
         <div className="absolute top-3 right-3">
           <span
-            className={`text-xs px-3 py-1 rounded-full font-medium ${
-              template.is_active
-                ? 'bg-green-100 text-green-700'
-                : 'bg-gray-100 text-gray-600'
-            }`}
+            className={`text-xs px-3 py-1 rounded-full font-medium ${template.is_active
+              ? 'bg-green-100 text-green-700'
+              : 'bg-gray-100 text-gray-600'
+              }`}
           >
             {template.is_active ? 'Active' : 'Inactive'}
           </span>
@@ -77,31 +84,43 @@ export function AdminTemplateCard({
         <h3 className="text-gray-900 font-semibold text-base leading-tight line-clamp-2">
           {template.name}
         </h3>
-
-        <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-          {template.description || 'No description'}
-        </p>
+        {template.description &&
+          <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+            {template.description || 'No description'}
+          </p>
+        }
 
         {/* Meta */}
         <div className="text-xs text-gray-500 mt-3 space-y-1">
+          {template.is_multipage ?
+            <div className="flex justify-between">
+              <span>Total Pages</span>
+              <span className="font-mono font-medium">{template?.pages?.length}</span>
+            </div>
+            : null
+          }
           <div className="flex justify-between">
-            <span>ID</span>
-            <span className="font-mono font-medium">{template.id}</span>
+            {template.category_name && (
+              <div className="flex justify-between gap-2">
+                <span className="font-bold">Category</span>
+                <span>{template.category_name}</span>
+              </div>
+            )}
+
+            {template.subcategory_name && (
+              <div className="flex justify-between gap-2">
+                <span className="font-semibold">Subcategory</span>
+                <span>{template.subcategory_name}</span>
+              </div>
+            )}
           </div>
-
-          {template.category_name && (
-            <div className="flex justify-between">
-              <span>Category</span>
-              <span>{template.category_name}</span>
-            </div>
-          )}
-
-          {template.subcategory_name && (
-            <div className="flex justify-between">
-              <span>Subcategory</span>
-              <span>{template.subcategory_name}</span>
-            </div>
-          )}
+            {/* Price */}
+            {template?.price > 0 && (
+              <div className="flex justify-between gap-2">
+                <span className="font-semibold">Price</span>
+                <span>{template.price}</span>
+              </div>
+            )}
         </div>
 
         {/* Actions */}
@@ -128,6 +147,6 @@ export function AdminTemplateCard({
         </div>
       </div>
     </div>
-    
+
   );
 }

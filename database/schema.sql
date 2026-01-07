@@ -70,7 +70,9 @@ CREATE TABLE templates (
   thumbnail_public_id VARCHAR(255) NULL COMMENT 'Cloudinary public ID for thumbnail',
   canvas_data JSON NOT NULL,
   -- Multi-page support
-  pages JSON NULL COMMENT 'Array of page data for multi-page templates: [{ backgroundId, canvasData }]',
+  -- Each page must include a preview image for fast rendering in lists/editors
+  -- Shape: [{ backgroundId, canvasData, preview_image_url, preview_public_id }]
+  pages JSON NULL COMMENT 'Array of page data for multi-page templates with per-page previews',
   is_multipage BOOLEAN DEFAULT FALSE COMMENT 'Whether template has multiple pages',
   -- Status and timestamps
   is_active BOOLEAN DEFAULT TRUE COMMENT 'Soft delete flag',

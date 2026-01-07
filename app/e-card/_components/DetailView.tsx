@@ -41,8 +41,14 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
   const totalPages = isMultipage ? template.pages!.length : 1;
   
   const previewSrc = isMultipage
-    ? template.pages![currentPage]?.imageUrl || ''
-    : template.thumbnail_uri || template.template_image_url || template.pages?.[0]?.imageUrl || '';
+    ? (template.pages![currentPage]?.previewImageUrl || template.pages![currentPage]?.imageUrl || '')
+    : (
+        template.thumbnail_uri 
+        || template.template_image_url 
+        || template.pages?.[0]?.previewImageUrl 
+        || template.pages?.[0]?.imageUrl 
+        || ''
+      );
 
  return (
   <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
