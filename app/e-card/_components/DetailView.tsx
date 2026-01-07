@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { Template } from '@/lib/types';
 
@@ -11,6 +12,8 @@ interface TemplateDetailProps {
 }
 
 export function DetailView({ template, loading, error, onRetry }: TemplateDetailProps) {
+  const [currentPage, setCurrentPage] = useState(0);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center py-20">
@@ -34,10 +37,12 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
     );
   }
 
-  const previewSrc = template.thumbnail_uri
-    || template.template_image_url
-    || template.pages?.[0]?.imageUrl
-    || '';
+  const isMultipage = template.is_multipage && template.pages && template.pages.length > 1;
+  const totalPages = isMultipage ? template.pages!.length : 1;
+  
+  const previewSrc = isMultipage
+    ? template.pages![currentPage]?.imageUrl || ''
+    : template.thumbnail_uri || template.template_image_url || template.pages?.[0]?.imageUrl || '';
 
  return (
   <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -68,8 +73,49 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
           )}
 
           <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/90 text-xs font-semibold border">
-            Preview
+            {isMultipage ? `Page ${currentPage + 1} of ${totalPages}` : 'Preview'}
           </span>
+
+          {/* Multipage Navigation */}
+          {isMultipage && (
+            <>
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(0, prev - 1))}
+                disabled={currentPage === 0}
+                className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 shadow-lg flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition"
+                aria-label="Previous page"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+
+              <button
+                onClick={() => setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1))}
+                disabled={currentPage === totalPages - 1}
+                className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 shadow-lg flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition"
+                aria-label="Next page"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+
+              {/* Page Dots */}
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+                {Array.from({ length: totalPages }).map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentPage(idx)}
+                    className={`w-2 h-2 rounded-full transition ${
+                      idx === currentPage ? 'bg-[#d18b47] w-6' : 'bg-white/70 hover:bg-white'
+                    }`}
+                    aria-label={`Go to page ${idx + 1}`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 

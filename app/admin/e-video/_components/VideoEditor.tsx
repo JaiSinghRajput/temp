@@ -10,6 +10,7 @@ import { CardEditor } from './CardEditor';
 import { CardDraft } from './types';
 import { createEmptyCard, createEmptyField } from './utils';
 import { VideoCategory, VideoSubcategory } from '@/lib/types';
+import { MAX_IMAGE_MB, MAX_VIDEO_MB } from '@/lib/constants';
 
 type EditorMode = 'create' | 'edit';
 
@@ -165,6 +166,14 @@ export default function VideoEditor({
     const handlePreviewVideoUpload = async (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        // Check file size before uploading
+        const maxVideoBytes = MAX_VIDEO_MB * 1024 * 1024;
+        if (file.size > maxVideoBytes) {
+            setError(`Video file too large. Max ${MAX_VIDEO_MB}MB allowed. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+            return;
+        }
+
         setUploadingVideo(true);
         setError(null);
         try {
@@ -175,6 +184,7 @@ export default function VideoEditor({
                 setPreviewThumbUrl(res.thumbnailUrl);
             }
         } catch (err: any) {
+            console.error('Video upload error:', err);
             setError(err?.message || 'Video upload failed');
         } finally {
             setUploadingVideo(false);
@@ -184,6 +194,14 @@ export default function VideoEditor({
     const handleThumbUpload = async (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        // Check file size before uploading
+        const maxImageBytes = MAX_IMAGE_MB * 1024 * 1024;
+        if (file.size > maxImageBytes) {
+            setError(`Image file too large. Max ${MAX_IMAGE_MB}MB allowed. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+            return;
+        }
+
         setUploadingThumb(true);
         setError(null);
         try {
@@ -191,6 +209,7 @@ export default function VideoEditor({
             setPreviewThumbUrl(res.thumbnailUrl || res.secureUrl);
             setPreviewThumbPublicId(res.publicId || null);
         } catch (err: any) {
+            console.error('Thumbnail upload error:', err);
             setError(err?.message || 'Thumbnail upload failed');
         } finally {
             setUploadingThumb(false);

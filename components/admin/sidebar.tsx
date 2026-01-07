@@ -23,6 +23,7 @@ import {
   Logout as LogoutIcon,
   TextFields as FontsIcon,
   VideoCameraBack as EVideoIcon,
+  ColorLens as ColorsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -90,8 +91,9 @@ export function AdminSidebar() {
         ],
       },
       { key: 'fonts', title: 'Fonts', href: '/admin/fonts' },
+      { key: 'colors', title: 'Colors', href: '/admin/colors' },
     ];
-  }, [user?.role]);
+  }, [user]);
 
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     templates: true,
@@ -117,6 +119,8 @@ export function AdminSidebar() {
         return <CategoriesIcon />;
       case 'fonts':
         return <FontsIcon />;
+      case 'colors':
+        return <ColorsIcon />;
       case 'e-video':
         return <EVideoIcon />;
       default:

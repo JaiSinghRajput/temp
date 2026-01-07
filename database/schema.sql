@@ -285,3 +285,14 @@ CREATE TABLE IF NOT EXISTS e_video_requests (
 COMMENT='Incoming user requests for e-Video';
 
 SELECT 'Database setup completed successfully!' as Status;
+
+CREATE TABLE IF NOT EXISTS color(
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  hex_code VARCHAR(7) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_color_name (name),
+  UNIQUE KEY uniq_hex_code (hex_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='Color options for e-cards';
