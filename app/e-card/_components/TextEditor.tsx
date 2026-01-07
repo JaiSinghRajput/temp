@@ -6,6 +6,7 @@ import {
   loadTextOnlyCanvas,
   getUpdatedTextContent,
   loadCustomFonts,
+  loadFontsFromElements,
 } from '@/lib/text-only-canvas-renderer';
 import { useCanvasTextAnimation } from '@/hooks/useCanvasTextAnimation';
 import jsPDF from 'jspdf';
@@ -13,6 +14,7 @@ import jsPDF from 'jspdf';
 interface PublishPayload {
   customizedData: any;
   previewDataUrl?: string;
+  previewUrls?: string[];
 }
 
 interface TextEditorProps {
@@ -36,6 +38,8 @@ export default function TextEditor({
   const containerRef = useRef<HTMLDivElement>(null);
   const fabricCanvasRef = useRef<Canvas | null>(null);
   const textObjectsRef = useRef<Map<string, Textbox>>(new Map());
+  const lastSavedPageRef = useRef<number>(-1);
+  const initializedTemplateIdRef = useRef<number | null>(null);
 
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [selectedText, setSelectedText] = useState('');
@@ -58,7 +62,17 @@ export default function TextEditor({
 
   // Get current page data
   const currentPageData = isMultipage ? template.pages![currentPage] : null;
-  const canvasData = currentPageData?.canvasData || template.canvas_data;
+  // Check if there are saved customizations for this page, otherwise use template data
+  const pageCustomization = isMultipage ? pageCustomizations.get(currentPage) : undefined;
+  const canvasData = pageCustomization?.canvasData || currentPageData?.canvasData || template.canvas_data;
+  
+  if (isMultipage && canvasData) {
+    console.log(`[TextEditor] Page ${currentPage} using:`, {
+      hasPageCustomization: !!pageCustomization,
+      textElementsCount: canvasData.textElements?.length,
+      firstTextElement: canvasData.textElements?.[0]?.text
+    });
+  }
   const backgroundUrl = currentPageData?.imageUrl || template.template_image_url;
   const backgroundId = currentPageData?.backgroundId || template.background_id;
 
@@ -93,6 +107,11 @@ export default function TextEditor({
     });
 
     fabricCanvasRef.current = canvas;
+
+    // Load fonts from text elements (with fallback to CDN links API)
+    loadFontsFromElements(textElements, canvasData?.customFonts).catch((err) => {
+      console.warn('Font loading failed, continuing anyway:', err);
+    });
 
     // Load canvas with text elements
     loadTextOnlyCanvas({
@@ -138,6 +157,45 @@ export default function TextEditor({
     };
   }, [canvasData, backgroundUrl, backgroundId, canvasWidth, canvasHeight, isMobile, currentPage]);
 
+  // Initialize pageCustomizations from template when it loads (e.g., after restoring from draft)
+  useEffect(() => {
+    if (!isMultipage || !template.pages) return;
+
+    // Only initialize once per template to avoid resetting during edits
+    if (initializedTemplateIdRef.current === templateId) return;
+
+    console.log('[TextEditor] Initializing pageCustomizations for template', templateId, 'pages:', template.pages.length);
+
+    // Initialize pageCustomizations with all pages' canvasData from the template
+    // This ensures that customizations restored from draft are preserved
+    const initializations = new Map<number, { canvasData: any; previewDataUrl: string }>();
+
+    template.pages.forEach((page, idx) => {
+      // Store each page's canvasData - use page-specific or fall back to template canvas_data
+      const pageCanvasData = page.canvasData || template.canvas_data;
+      if (pageCanvasData) {
+        console.log(`[TextEditor] Page ${idx} canvasData:`, pageCanvasData.textElements?.length, 'text elements');
+        initializations.set(idx, {
+          canvasData: pageCanvasData,
+          previewDataUrl: '',
+        });
+      }
+    });
+
+    // Update state with all pages' customizations
+    if (initializations.size > 0) {
+      console.log('[TextEditor] Setting pageCustomizations with', initializations.size, 'pages');
+      setPageCustomizations(initializations);
+    }
+
+    // Reset page tracking and text objects when template loads
+    lastSavedPageRef.current = 0;
+    textObjectsRef.current.clear();
+
+    // Mark this template as initialized
+    initializedTemplateIdRef.current = templateId;
+  }, [template, isMultipage, templateId]);
+
   // Track viewport for mobile handling
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)');
@@ -154,38 +212,62 @@ export default function TextEditor({
   useEffect(() => {
     if (!isMultipage) return;
 
-    // Save current page state before switching
-    return () => {
+    // If we switched to a different page, save the previous page first
+    if (lastSavedPageRef.current !== -1 && lastSavedPageRef.current !== currentPage) {
+      console.log(`[TextEditor] Switching from page ${lastSavedPageRef.current} to page ${currentPage}`);
       const canvas = fabricCanvasRef.current;
-      if (!canvas || textObjectsRef.current.size === 0) return;
+      if (canvas && textObjectsRef.current.size > 0) {
+        try {
+          // Get the OLD page's data from pageCustomizations or template
+          const previousPageData = template.pages![lastSavedPageRef.current];
+          const previousCanvasData = pageCustomizations.get(lastSavedPageRef.current)?.canvasData || previousPageData.canvasData;
+          const previousTextElements = previousCanvasData?.textElements || [];
 
-      try {
-        const updatedTexts = getUpdatedTextContent(textObjectsRef.current);
-        const customizedData = {
-          ...canvasData,
-          textElements: textElements.map((el) => ({
-            ...el,
-            text: updatedTexts.find((ut) => ut.id === el.id)?.text || el.text,
-          })),
-        };
+          // Get updated text from the current canvas (which still has old page's text)
+          const updatedTexts = getUpdatedTextContent(textObjectsRef.current);
+          
+          // Check if anything actually changed before saving
+          const hasChanges = updatedTexts.some(
+            (ut) => {
+              const originalText = previousTextElements.find((el: any) => el.id === ut.id)?.text;
+              return originalText !== ut.text;
+            }
+          );
 
-        const multiplier = Math.max(2, 1 / canvasScale || 1);
-        const previewDataUrl = canvas.toDataURL({
-          format: 'png',
-          quality: 1,
-          multiplier,
-        });
+          console.log(`[TextEditor] Page ${lastSavedPageRef.current} hasChanges:`, hasChanges, 'updatedTexts:', updatedTexts.length);
 
-        setPageCustomizations((prev) => {
-          const updated = new Map(prev);
-          updated.set(currentPage, { canvasData: customizedData, previewDataUrl });
-          return updated;
-        });
-      } catch (err) {
-        console.warn('Failed to save page customization:', err);
+          if (hasChanges) {
+            const customizedData = {
+              ...previousCanvasData,
+              textElements: previousTextElements.map((el: any) => ({
+                ...el,
+                text: updatedTexts.find((ut) => ut.id === el.id)?.text || el.text,
+              })),
+            };
+
+            setPageCustomizations((prev) => {
+              const updated = new Map(prev);
+              updated.set(lastSavedPageRef.current, { 
+                canvasData: customizedData, 
+                previewDataUrl: '' 
+              });
+              console.log(`[TextEditor] Saved page ${lastSavedPageRef.current} customization`);
+              return updated;
+            });
+          }
+        } catch (err) {
+          console.warn('Failed to save previous page customization:', err);
+        }
       }
-    };
-  }, [currentPage, isMultipage]);
+    }
+
+    // Clear selection state when switching pages
+    setSelectedTextId(null);
+    setSelectedText('');
+
+    // Update the tracked page
+    lastSavedPageRef.current = currentPage;
+  }, [currentPage, isMultipage, pageCustomizations, template.pages]);
 
   // Update text when editing
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -256,7 +338,8 @@ export default function TextEditor({
           pages,
         };
 
-        // Collect all preview URLs
+        // Collect all preview URLs - only include those that were actually edited
+        // Other pages will be generated on preview page from canvas data
         finalPreviewUrls = template.pages!.map((_, idx) => {
           const customization = allCustomizations.get(idx);
           return customization?.previewDataUrl || '';
@@ -269,7 +352,8 @@ export default function TextEditor({
       if (onPublish) {
         await onPublish({
           customizedData: finalCustomizedData,
-          previewDataUrl: isMultipage ? finalPreviewUrls?.[0] : previewDataUrl
+          previewDataUrl: isMultipage ? finalPreviewUrls?.[0] : previewDataUrl,
+          previewUrls: isMultipage ? finalPreviewUrls : undefined,
         });
       }
     } catch (err) {
@@ -317,6 +401,11 @@ export default function TextEditor({
         const pageBackgroundId = pageData?.backgroundId;
         const pageWidth = pageCanvasData?.canvasWidth || 800;
         const pageHeight = pageCanvasData?.canvasHeight || 600;
+
+        // Pre-load fonts for this page
+        await loadFontsFromElements(pageTextElements, pageCanvasData?.customFonts).catch(
+          (err) => console.warn('Font loading for PDF page failed:', err)
+        );
 
         // Create temporary canvas for rendering
         const tempCanvas = document.createElement('canvas');
@@ -516,7 +605,7 @@ export default function TextEditor({
                   className="w-full px-4 py-3 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ background: 'linear-gradient(90deg, #d18b47, #b87435)' }}
                 >
-                  {isSaving || isLoading ? 'Publishing...' : 'Publish Card'}
+                  {isSaving || isLoading ? 'Preparing preview...' : 'Preview'}
                 </button>
 
                 {/* PDF Download for Multipage */}
@@ -599,7 +688,7 @@ export default function TextEditor({
                   className="flex-1 px-4 py-2 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ background: 'linear-gradient(90deg, #d18b47, #b87435)' }}
                 >
-                  {isSaving || isLoading ? 'Publishing...' : 'Save & Publish'}
+                  {isSaving || isLoading ? 'Preparing preview...' : 'Save & Preview'}
                 </button>
               </div>
             </div>

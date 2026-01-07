@@ -1,6 +1,7 @@
 import { Canvas, Textbox, FabricImage } from 'fabric';
 import { TextElement } from './types';
 import { uploadService } from '@/services';
+import { loadFontsFromElements } from './text-only-canvas-renderer';
 
 export interface LoadCanvasOptions {
   canvas: Canvas;
@@ -13,6 +14,15 @@ export interface LoadCanvasOptions {
   onTextSelect?: (id: string) => void;
   customFonts?: Array<{ name: string; url: string }>;
   isCancelled?: () => boolean;
+}
+
+export interface RenderCanvasToImageOptions {
+  canvasData?: any;
+  backgroundUrl?: string;
+  backgroundId?: number;
+  width?: number;
+  height?: number;
+  customFonts?: Array<{ name: string; url: string }>;
 }
 
 /**
@@ -56,6 +66,97 @@ export async function loadCustomFonts(fonts?: Array<{ name: string; url: string 
     }
   }
   await document.fonts.ready;
+}
+
+/**
+ * Render canvas data to an image (data URL)
+ */
+export async function renderCanvasToImage(
+  options: RenderCanvasToImageOptions
+): Promise<string> {
+  const { canvasData, backgroundUrl, backgroundId, width = 800, height = 600, customFonts } = options;
+
+  if (!canvasData) {
+    return '';
+  }
+
+  try {
+    // Load fonts first from CDN links API (with fallback to customFonts)
+    if (canvasData.textElements && Array.isArray(canvasData.textElements)) {
+      const textElements = canvasData.textElements as TextElement[];
+      await loadFontsFromElements(textElements, customFonts).catch((err) =>
+        console.warn('Font loading for preview failed:', err)
+      );
+    } else if (customFonts) {
+      await loadCustomFonts(customFonts);
+    }
+
+    // Create a temporary canvas
+    const tempCanvas = new Canvas(null as any, {
+      width,
+      height,
+    });
+
+    // Load background if available
+    if (backgroundUrl || backgroundId) {
+      const resolvedUrl = await resolveBackgroundUrl(backgroundUrl, backgroundId);
+      const bgImg = await FabricImage.fromURL(resolvedUrl, { crossOrigin: 'anonymous' });
+
+      const bgFitScale = Math.min(width / bgImg.width!, height / bgImg.height!);
+      const bgWidth = bgImg.width! * bgFitScale;
+      const bgHeight = bgImg.height! * bgFitScale;
+      const bgLeft = (width - bgWidth) / 2;
+      const bgTop = (height - bgHeight) / 2;
+
+      tempCanvas.backgroundImage = bgImg;
+      bgImg.set({
+        scaleX: bgFitScale,
+        scaleY: bgFitScale,
+        originX: 'left',
+        originY: 'top',
+        left: bgLeft,
+        top: bgTop,
+      });
+    }
+
+    // Load text elements from canvas data - render ALL elements including locked ones
+    if (canvasData.textElements && Array.isArray(canvasData.textElements)) {
+      canvasData.textElements.forEach((textEl: TextElement) => {
+        const textbox = new Textbox(textEl.text, {
+          left: textEl.left,
+          top: textEl.top,
+          fontSize: textEl.fontSize,
+          fontFamily: textEl.fontFamily || 'Arial',
+          fontWeight: textEl.fontWeight || 'normal',
+          fill: textEl.fill,
+          width: textEl.width,
+          textAlign: textEl.textAlign as any,
+          angle: textEl.angle || 0,
+          scaleX: textEl.scaleX || 1,
+          scaleY: textEl.scaleY || 1,
+          letterSpacing: (textEl as any).letterSpacing || 0,
+          lineHeight: (textEl as any).lineHeight || 1.16,
+        });
+        tempCanvas.add(textbox);
+      });
+    }
+
+    tempCanvas.requestRenderAll();
+
+    // Render to image
+    const multiplier = 2; // For better quality
+    const imageDataUrl = tempCanvas.toDataURL({
+      format: 'png',
+      quality: 1,
+      multiplier,
+    });
+
+    tempCanvas.dispose();
+    return imageDataUrl;
+  } catch (err) {
+    console.error('Error rendering canvas to image:', err);
+    return '';
+  }
 }
 
 export async function loadCanvasPage({

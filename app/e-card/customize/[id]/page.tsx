@@ -31,10 +31,10 @@ export default function CustomizeECardPage() {
   const [currentPage, setCurrentPage] = useState(0);
 
   useEffect(() => {
-    if (templateId) {
+    if (templateId && user && !authLoading) {
       fetchTemplate();
     }
-  }, [templateId]);
+  }, [templateId, user, authLoading]);
 
   const fetchTemplate = async () => {
     try {
@@ -44,7 +44,44 @@ export default function CustomizeECardPage() {
       const result = await templateService.getTemplateById(templateId);
 
       if (result.success && result.data) {
-        setTemplate(result.data);
+        let tpl = result.data as Template;
+        // Load draft from sessionStorage if available
+        try {
+          const draftKey = `ecard_draft_${templateId}_${user?.uid || 'guest'}`;
+          const raw = typeof window !== 'undefined' ? sessionStorage.getItem(draftKey) : null;
+          if (raw) {
+            const draft = JSON.parse(raw);
+            const customized = draft?.customized_data;
+            console.log('[CustomizePage] Draft loaded:', {
+              draftKey,
+              isMultipage: customized?.is_multipage,
+              pagesCount: customized?.pages?.length,
+              firstPageTextElements: customized?.pages?.[0]?.canvasData?.textElements?.length,
+              secondPageTextElements: customized?.pages?.[1]?.canvasData?.textElements?.length,
+            });
+            if (customized) {
+              // Merge customized text elements back into template for editing again
+              const isMulti = customized.is_multipage && Array.isArray(customized.pages);
+              if (isMulti && Array.isArray(tpl.pages)) {
+                console.log('[CustomizePage] Restoring multipage template');
+                tpl = { ...tpl, pages: tpl.pages.map((p, idx) => ({
+                  ...p,
+                  canvasData: customized.pages?.[idx]?.canvasData || p.canvasData,
+                })) } as Template;
+                console.log('[CustomizePage] Restored pages:', tpl.pages.map((p, idx) => ({
+                  pageIdx: idx,
+                  textElements: p.canvasData?.textElements?.length
+                })));
+              } else if (customized.textElements) {
+                // For single page, the customized data is the entire canvas data
+                tpl = { ...tpl, canvas_data: { ...tpl.canvas_data, ...customized } } as Template;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to load draft from sessionStorage:', e);
+        }
+        setTemplate(tpl);
       } else {
         setError('Template not found');
       }
@@ -56,7 +93,7 @@ export default function CustomizeECardPage() {
     }
   };
 
-  const handlePublish = async ({ customizedData, previewDataUrl }: { customizedData: any; previewDataUrl?: string }) => {
+  const handlePublish = async ({ customizedData, previewDataUrl, previewUrls }: { customizedData: any; previewDataUrl?: string; previewUrls?: string[] }) => {
     if (!user) {
       router.push(loginHref);
       return;
@@ -65,28 +102,20 @@ export default function CustomizeECardPage() {
       setPublishing(true);
       setError('');
 
-      const result = await userEcardService.createUserEcard({
+      // Store draft in sessionStorage for preview page
+      const draftKey = `ecard_draft_${templateId}_${user?.uid || 'guest'}`;
+      const draft = {
         template_id: Number(templateId),
         customized_data: customizedData,
         preview_uri: previewDataUrl,
+        preview_urls: previewUrls,
         user_id: user?.uid || undefined,
         user_name: user?.name || undefined,
-      });
+      };
+      sessionStorage.setItem(draftKey, JSON.stringify(draft));
 
-      if (result.success) {
-        const catSlug = result.data?.category_slug;
-        const subSlug = result.data?.subcategory_slug;
-        const slug = result.data?.slug;
-        if (slug) {
-          if (catSlug && subSlug) {
-            router.push(`/e-card/${catSlug}/${subSlug}/${slug}`);
-          } else {
-            router.push(`/e-card/${slug}`);
-          }
-        }
-      } else {
-        setError(result.error || 'Failed to publish card');
-      }
+      // Navigate to preview page
+      router.push(`/e-card/preview?template_id=${templateId}&draft=${encodeURIComponent(draftKey)}`);
     } catch (err) {
       console.error('Error publishing card:', err);
       setError('Failed to publish card');

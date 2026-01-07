@@ -54,10 +54,59 @@ export async function loadCustomFonts(fonts?: Array<{ name: string; url: string 
       try {
         await document.fonts.load(`16px "${font.name}"`);
       } catch (err) {
+        console.warn(`Failed to load font ${font.name}:`, err);
       }
     }
   }
   await document.fonts.ready;
+}
+
+/**
+ * Load fonts used in text elements from CDN links table if not already loaded
+ */
+export async function loadFontsFromElements(
+  textElements: TextElement[],
+  customFonts?: Array<{ name: string; url: string }>
+) {
+  // Collect unique font families from text elements
+  const fontFamilies = new Set<string>(
+    textElements
+      .map((el) => el.fontFamily)
+      .filter((f): f is string => !!f && f !== 'Arial')
+  );
+
+  if (fontFamilies.size === 0) return; // No custom fonts needed
+
+  // First try to use provided customFonts
+  if (customFonts && customFonts.length > 0) {
+    const fontsToLoad = customFonts.filter((f) => fontFamilies.has(f.name));
+    if (fontsToLoad.length > 0) {
+      await loadCustomFonts(fontsToLoad);
+      return;
+    }
+  }
+
+  // Fallback: fetch missing fonts from CDN links API
+  try {
+    const response = await fetch('/api/font-cdn-links');
+    const result = await response.json();
+    
+    if (result.success && Array.isArray(result.data)) {
+      const cdnFonts: Array<{ name: string; url: string }> = result.data.map(
+        (f: any) => ({
+          name: f.font_name,
+          url: f.cdn_link,
+        })
+      );
+
+      const fontsToLoad = cdnFonts.filter((f) => fontFamilies.has(f.name));
+      if (fontsToLoad.length > 0) {
+        await loadCustomFonts(fontsToLoad);
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to fetch fonts from CDN links API:', err);
+  }
 }
 
 /**

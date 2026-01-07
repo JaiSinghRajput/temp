@@ -1,8 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Template } from '@/lib/types';
+
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from '@/components/ui/carousel';
+
+import Autoplay from 'embla-carousel-autoplay';
 
 interface TemplateDetailProps {
   template?: Template | null;
@@ -37,143 +47,121 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
     );
   }
 
-  const isMultipage = template.is_multipage && template.pages && template.pages.length > 1;
-  const totalPages = isMultipage ? template.pages!.length : 1;
-  
-  const previewSrc = isMultipage
-    ? (template.pages![currentPage]?.previewImageUrl || template.pages![currentPage]?.imageUrl || '')
-    : (
-        template.thumbnail_uri 
-        || template.template_image_url 
-        || template.pages?.[0]?.previewImageUrl 
-        || template.pages?.[0]?.imageUrl 
-        || ''
-      );
+  const pages =
+    template.is_multipage && template.pages?.length
+      ? template.pages
+      : [
+          {
+            imageUrl:
+              template.thumbnail_uri ||
+              template.template_image_url ||
+              template.pages?.[0]?.imageUrl,
+          },
+        ];
 
- return (
-  <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div className="grid grid-cols-1 gap-10">
-      
-      {/* PREVIEW */}
-      <div className="relative">
-        <div
-          className="
-            sticky top-24
-            rounded-3xl
-            bg-[#f3e4d6]
-            overflow-hidden
-            shadow-sm
-          "
-          style={{ aspectRatio: '4 / 5' }}
-        >
-          {previewSrc ? (
-            <img
-              src={previewSrc}
-              alt={template.name}
-              className="w-full h-full object-contain"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-400">
-              No preview
-            </div>
-          )}
+  return (
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="grid grid-cols-1 gap-10">
 
-          <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/90 text-xs font-semibold border">
-            {isMultipage ? `Page ${currentPage + 1} of ${totalPages}` : 'Preview'}
-          </span>
+        {/* PREVIEW */}
+        <div className="relative">
+          <div
+            className="sticky top-24 rounded-3xl bg-[#f3e4d6] shadow-sm"
+            style={{ aspectRatio: '3 / 5' }}
+          >
+            <Carousel
+              opts={{ loop: true }}
+              plugins={[
+                Autoplay({
+                  delay: 4000,
+                  stopOnInteraction: true,
+                }),
+              ]}
+              setApi={(api) => {
+                if (!api) return;
+                api.on('select', () => setCurrentPage(api.selectedScrollSnap()));
+              }}
+            >
+              <CarouselContent>
+                {pages.map((page, idx) => (
+                  <CarouselItem key={idx}>
+                    {page.imageUrl ? (
+                      <img
+                        src={page.imageUrl}    
+                        alt={`${template.name} page ${idx + 1}`}
+                        className="w-full h-full"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                        No preview
+                      </div>
+                    )}
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
 
-          {/* Multipage Navigation */}
-          {isMultipage && (
-            <>
-              <button
-                onClick={() => setCurrentPage((prev) => Math.max(0, prev - 1))}
-                disabled={currentPage === 0}
-                className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 shadow-lg flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition"
-                aria-label="Previous page"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
+              {pages.length > 1 && (
+                <div className='md:block hidden'>
+                  <CarouselPrevious />
+                  <CarouselNext />
+                </div>
+              )}
+            </Carousel>
 
-              <button
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages - 1, prev + 1))}
-                disabled={currentPage === totalPages - 1}
-                className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/90 shadow-lg flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white transition"
-                aria-label="Next page"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
+            {/* Page Indicator */}
+            <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/90 text-xs font-semibold border">
+              {pages.length > 1
+                ? `Page ${currentPage + 1} of ${pages.length}`
+                : 'Preview'}
+            </span>
 
-              {/* Page Dots */}
+            {/* Dots */}
+            {pages.length > 1 && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                {Array.from({ length: totalPages }).map((_, idx) => (
-                  <button
+                {pages.map((_, idx) => (
+                  <div
                     key={idx}
-                    onClick={() => setCurrentPage(idx)}
-                    className={`w-2 h-2 rounded-full transition ${
-                      idx === currentPage ? 'bg-[#d18b47] w-6' : 'bg-white/70 hover:bg-white'
+                    className={`h-2 rounded-full transition-all ${
+                      idx === currentPage
+                        ? 'w-6 bg-[#d18b47]'
+                        : 'w-2 bg-white/70'
                     }`}
-                    aria-label={`Go to page ${idx + 1}`}
                   />
                 ))}
               </div>
-            </>
-          )}
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* DETAILS */}
-      <div className="flex flex-col justify-start pt-2">
-        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900 leading-tight">
-          {template.name}
-        </h1>
+        {/* DETAILS */}
+        <div className="flex flex-col justify-start pt-2">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900">
+            {template.name}
+          </h1>
 
-        {template.description && (
-          <p className="text-base text-gray-600 mt-4 max-w-xl">
-            {template.description}
-          </p>
-        )}
+          {template.description && (
+            <p className="text-base text-gray-600 mt-4 max-w-xl">
+              {template.description}
+            </p>
+          )}
 
-        {/* CTA */}
-        <div className="mt-8 flex flex-col sm:flex-row gap-4">
-          <Link
-            href={`/e-card/customize/${template.id}`}
-            className="
-              p-2 py-2.5
-              rounded-xl
-              bg-[#d18b47]
-              text-white
-              font-semibold
-              text-center
-              hover:bg-[#c07c3c]
-              transition
-            "
-          >
-            Customize Card
-          </Link>
+          <div className="mt-8 flex flex-col sm:flex-row gap-4">
+            <Link
+              href={`/e-card/customize/${template.id}`}
+              className="p-2 py-2.5 rounded-xl bg-[#d18b47] text-white font-semibold text-center hover:bg-[#c07c3c]"
+            >
+              Customize Card
+            </Link>
 
-          <Link
-            href="/e-card"
-            className="
-              p-2 py-2.5
-              rounded-xl
-              border border-gray-300
-              text-gray-800
-              font-semibold
-              text-center
-              hover:border-gray-400
-              transition
-            "
-          >
-            Back to catalog
-          </Link>
+            <Link
+              href="/e-card"
+              className="p-2 py-2.5 rounded-xl border border-gray-300 text-gray-800 font-semibold text-center hover:border-gray-400"
+            >
+              Back to catalog
+            </Link>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
-
+  );
 }
