@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
-import { Readable } from 'stream';
 import { MAX_IMAGE_MB, MAX_VIDEO_MB } from '@/lib/constants';
 import { ALLOWED_IMAGE_TYPES as IMAGE_TYPES, ALLOWED_VIDEO_TYPES as VIDEO_TYPES } from '@/lib/constants';
 
@@ -18,21 +17,6 @@ export const maxDuration = 300; // 5 minutes
 
 
 export async function POST(req: Request) {
-<<<<<<< HEAD
-  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
-    return NextResponse.json(
-      { success: false, error: 'Cloudinary env vars missing' },
-      { status: 500 }
-    );
-  }
-
-  const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
-  const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 50MB
-  const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-  const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/x-matroska', 'video/webm'];
-
-=======
->>>>>>> 51c19bfdfefe710ccbd52e91435f6e4fe2e46b99
   try {
     const contentType = req.headers.get('content-type') || '';
     
@@ -80,11 +64,7 @@ export async function POST(req: Request) {
 
     if (isVideo && file.size > MAX_VIDEO_BYTES) {
       return NextResponse.json(
-<<<<<<< HEAD
-        { success: false, error: 'Video too large. Max 100MB allowed.' },
-=======
         { success: false, error: `Video too large. Max ${MAX_VIDEO_MB}MB allowed.` },
->>>>>>> 51c19bfdfefe710ccbd52e91435f6e4fe2e46b99
         { status: 400 }
       );
     }
