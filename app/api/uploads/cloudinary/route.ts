@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   }
 
   const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
-  const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 50MB
+  const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 50MB
   const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
   const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/x-matroska', 'video/webm'];
 
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
     if (isVideo && typedFile.size > MAX_VIDEO_BYTES) {
       return NextResponse.json(
-        { success: false, error: 'Video too large. Max 50MB allowed.' },
+        { success: false, error: 'Video too large. Max 100MB allowed.' },
         { status: 400 }
       );
     }
