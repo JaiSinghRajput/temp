@@ -2,16 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
-interface Params {
-  params: {
-    id: string;
-  };
-}
-
 // GET single color
-export async function GET(request: NextRequest, { params }: Params) {
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const [colors] = await pool.query<RowDataPacket[]>(
       'SELECT id, name, hex_code FROM color WHERE id = ?',
       [id]
@@ -38,9 +35,12 @@ export async function GET(request: NextRequest, { params }: Params) {
 }
 
 // PUT update color
-export async function PUT(request: NextRequest, { params }: Params) {
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const { name, hex_code } = await request.json();
 
     if (!name || !hex_code) {
@@ -90,9 +90,12 @@ export async function PUT(request: NextRequest, { params }: Params) {
 }
 
 // DELETE color
-export async function DELETE(request: NextRequest, { params }: Params) {
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const [result] = await pool.query<ResultSetHeader>(
       'DELETE FROM color WHERE id = ?',
