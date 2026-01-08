@@ -68,10 +68,6 @@ export default function CustomizeECardPage() {
                   ...p,
                   canvasData: customized.pages?.[idx]?.canvasData || p.canvasData,
                 })) } as Template;
-                console.log('[CustomizePage] Restored pages:', tpl.pages.map((p, idx) => ({
-                  pageIdx: idx,
-                  textElements: p.canvasData?.textElements?.length
-                })));
               } else if (customized.textElements) {
                 // For single page, the customized data is the entire canvas data
                 tpl = { ...tpl, canvas_data: { ...tpl.canvas_data, ...customized } } as Template;

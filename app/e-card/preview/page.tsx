@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,7 +16,7 @@ interface DraftData {
 	user_name?: string;
 }
 
-export default function PreviewPage() {
+function PreviewPageInner() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const { user } = useAuth();
@@ -191,5 +192,19 @@ export default function PreviewPage() {
 				)}
 			</div>
 		</main>
+	);
+}
+
+export default function PreviewPage() {
+	return (
+		<Suspense fallback={
+			<main className="min-h-screen bg-linear-to-br from-[#faf7f4] via-[#fdfaf7] to-[#f3e4d6]">
+				<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+					<div className="rounded-2xl border bg-white px-6 py-10 text-center text-gray-600">Loading preview…</div>
+				</div>
+			</main>
+		}>
+			<PreviewPageInner />
+		</Suspense>
 	);
 }
