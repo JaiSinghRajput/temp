@@ -32,6 +32,7 @@ CREATE TABLE admins (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+
 -- =====================================================
 -- 2. CONTENT DOMAIN (CORE)
 -- =====================================================
@@ -84,7 +85,7 @@ CREATE TABLE categories (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   slug VARCHAR(255) NOT NULL UNIQUE,
-  category_type ENUM('card','video','cloths','dresses') NOT NULL DEFAULT 'card',
+  category_type ENUM('card','video','gifts','dresses') NOT NULL DEFAULT 'card',
   parent_id BIGINT NULL,
   is_active BOOLEAN DEFAULT TRUE,
   FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE
@@ -109,12 +110,25 @@ CREATE TABLE products (
   sku VARCHAR(100) UNIQUE,
   name VARCHAR(255),
   type ENUM('physical','digital') NOT NULL,
+  metadata JSON,
   price DECIMAL(10,2) NOT NULL,
   sale_price DECIMAL(10,2),
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (content_id) REFERENCES content_items(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+
+CREATE TABLE product_images (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  product_id BIGINT NOT NULL,
+  image_url TEXT NOT NULL,
+  cloudinary_public_id VARCHAR(255),
+  sort_order INT DEFAULT 0,
+  is_primary BOOLEAN DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+  INDEX idx_product (product_id)
+);
 
 CREATE TABLE orders (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
