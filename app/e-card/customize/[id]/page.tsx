@@ -41,10 +41,27 @@ export default function CustomizeECardPage() {
       setTemplateLoading(true);
       setError('');
 
+      console.log('[CustomizePage] Fetching template with ID:', templateId);
+      
+      // Add timeout to prevent infinite loading
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
       const result = await templateService.getTemplateById(templateId);
+      clearTimeout(timeoutId);
+      
+      console.log('[CustomizePage] API result:', { success: result?.success, hasData: !!result?.data, result });
 
-      if (result.success && result.data) {
+      if (result?.success && result?.data) {
         let tpl = result.data as Template;
+        console.log('[CustomizePage] Template fetched:', {
+          id: tpl.id,
+          title: tpl.title,
+          is_multipage: tpl.is_multipage,
+          pages_count: tpl.pages?.length,
+          has_canvas_data: !!tpl.canvas_data,
+        });
+        
         // Load draft from sessionStorage if available
         try {
           const draftKey = `ecard_draft_${templateId}_${user?.uid || 'guest'}`;
@@ -79,17 +96,22 @@ export default function CustomizeECardPage() {
         }
         setTemplate(tpl);
       } else {
-        setError('Template not found');
+        const errMsg = result?.error || result?.message || 'Template not found';
+        console.error('[CustomizePage] API response was not successful:', errMsg, result);
+        setError(errMsg);
       }
     } catch (err) {
       console.error('Error fetching template:', err);
-      setError('Failed to load template');
+      const errorMsg = err instanceof Error 
+        ? (err.name === 'AbortError' ? 'Request timed out. Please try again.' : err.message)
+        : 'Failed to load template';
+      setError(errorMsg);
     } finally {
       setTemplateLoading(false);
     }
   };
 
-  const handlePublish = async ({ customizedData, previewDataUrl, previewUrls }: { customizedData: any; previewDataUrl?: string; previewUrls?: string[] }) => {
+  const handlePreview = async ({ customizedData, previewDataUrl, previewUrls }: { customizedData: any; previewDataUrl?: string; previewUrls?: string[] }) => {
     if (!user) {
       router.push(loginHref);
       return;
@@ -112,6 +134,49 @@ export default function CustomizeECardPage() {
 
       // Navigate to preview page
       router.push(`/e-card/preview?template_id=${templateId}&draft=${encodeURIComponent(draftKey)}`);
+    } catch (err) {
+      console.error('Error previewing card:', err);
+      setError('Failed to preview card');
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handlePublish = async ({ customizedData, previewDataUrl, previewUrls }: { customizedData: any; previewDataUrl?: string; previewUrls?: string[] }) => {
+    if (!user) {
+      router.push(loginHref);
+      return;
+    }
+    try {
+      setPublishing(true);
+      setError('');
+
+      // Directly publish the card
+      const result = await userEcardService.createUserEcard({
+        template_id: Number(templateId),
+        customized_data: customizedData,
+        preview_uri: previewDataUrl,
+        preview_urls: previewUrls,
+        user_id: user?.uid || undefined,
+        user_name: user?.name || undefined,
+      });
+
+      if (result.success) {
+        const catSlug = result.data?.category_slug;
+        const subSlug = result.data?.subcategory_slug;
+        const slug = result.data?.slug;
+        if (slug) {
+          if (catSlug && subSlug) {
+            router.push(`/e-card/${catSlug}/${subSlug}/${slug}`);
+          } else {
+            router.push(`/e-card/${slug}`);
+          }
+        } else {
+          router.push("/my-cards");
+        }
+      } else {
+        setError(result.error || "Failed to publish card");
+      }
     } catch (err) {
       console.error('Error publishing card:', err);
       setError('Failed to publish card');
@@ -211,6 +276,7 @@ export default function CustomizeECardPage() {
             template={template}
             currentPage={currentPage}
             onPageChange={setCurrentPage}
+            onPreview={handlePreview}
             onPublish={handlePublish}
             isLoading={publishing}
           />

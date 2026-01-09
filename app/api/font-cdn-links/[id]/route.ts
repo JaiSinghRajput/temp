@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { id } = await params;
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, font_name, cdn_link, created_at FROM FONT_CDN_LINKS WHERE id = ?',
+      `SELECT id, JSON_EXTRACT(metadata, '$.font_name') as font_name, url as cdn_link, created_at FROM content_assets WHERE id = ? AND asset_type = 'font'`,
       [id]
     );
 
@@ -59,8 +59,8 @@ export async function PUT(
     }
 
     const [result] = await pool.query<ResultSetHeader>(
-      'UPDATE FONT_CDN_LINKS SET font_name = ?, cdn_link = ? WHERE id = ?',
-      [font_name.trim(), cdn_link.trim(), id]
+      `UPDATE content_assets SET url = ?, metadata = JSON_OBJECT('font_name', ?) WHERE id = ? AND asset_type = 'font'`,
+      [cdn_link.trim(), font_name.trim(), id]
     );
 
     if (result.affectedRows === 0) {
@@ -90,7 +90,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     const [result] = await pool.query<ResultSetHeader>(
-      'DELETE FROM FONT_CDN_LINKS WHERE id = ?',
+      `DELETE FROM content_assets WHERE id = ? AND asset_type = 'font'`,
       [id]
     );
 

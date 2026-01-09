@@ -59,7 +59,7 @@ function SearchContent() {
     if (!normalizedQuery) return templates;
     return templates.filter((t) => {
       const haystack = [
-        t.name,
+        t.title,
         t.description,
         (t as any).category_name,
         (t as any).subcategory_name,
@@ -127,7 +127,7 @@ function SearchContent() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {filteredCards.map((t) => {
-                    const cardSlug = slugify(t.name || '');
+                    const cardSlug = (t as any).slug || slugify(t.title || '');
                     const categorySlug = (t as any).category_slug || slugify((t as any).category_name || '') || undefined;
                     const subcategorySlug = (t as any).subcategory_slug || slugify((t as any).subcategory_name || '') || undefined;
                     let href = `/e-card/${cardSlug}`;
@@ -136,7 +136,7 @@ function SearchContent() {
 
                     return (
                       <Link key={t.id} href={href} className="bg-white border rounded-xl p-4 hover:border-[#d18b47] transition">
-                        <div className="text-sm font-semibold text-gray-900 line-clamp-2">{t.name}</div>
+                        <div className="text-sm font-semibold text-gray-900 line-clamp-2">{t.title}</div>
                         {(t as any).category_name && (
                           <div className="text-xs text-gray-600 mt-1">{(t as any).category_name}</div>
                         )}

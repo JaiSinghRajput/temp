@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { slugify } from '@/lib/utils';
 
 export async function GET() {
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, font_name, cdn_link, created_at FROM FONT_CDN_LINKS ORDER BY font_name ASC'
+      `SELECT id, JSON_EXTRACT(metadata, '$.font_name') as font_name, url as cdn_link, created_at FROM content_assets WHERE asset_type = 'font' ORDER BY JSON_EXTRACT(metadata, '$.font_name') ASC`
     );
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
@@ -45,19 +46,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO FONT_CDN_LINKS (font_name, cdn_link) VALUES (?, ?)',
-      [font_name.trim(), cdn_link.trim()]
-    );
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        id: result.insertId,
-        font_name: font_name.trim(),
-        cdn_link: cdn_link.trim(),
-      },
-    });
+      const title = font_name.trim();
+      const slug = slugify(title);
+
+      const [contentResult] = await conn.query<ResultSetHeader>(
+        `INSERT INTO content_items (type, title, slug, description, is_active) VALUES ('ecard', ?, ?, NULL, TRUE)`,
+        [title, slug]
+      );
+
+      const contentId = contentResult.insertId;
+
+      const [result] = await conn.query<ResultSetHeader>(
+        `INSERT INTO content_assets (content_id, asset_type, url, metadata) VALUES (?, 'font', ?, JSON_OBJECT('font_name', ?))`,
+        [contentId, cdn_link.trim(), title]
+      );
+
+      await conn.commit();
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          id: result.insertId,
+          font_name: title,
+          cdn_link: cdn_link.trim(),
+        },
+      });
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
   } catch (error: any) {
     console.error('Error creating font CDN link:', error);
     if (error.code === 'ER_DUP_ENTRY') {

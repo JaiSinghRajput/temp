@@ -3,6 +3,7 @@ import HeroSection from '@/components/Home/Hero';
 import SmoothCarousel from '@/components/ui/SmoothCarousel';
 import { Template } from '@/lib/types';
 import { templateService, videoService } from '@/services';
+import { slugify as strSlugify } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import VideoCard from '@/components/Home/VideoCard';
 import { motion } from 'framer-motion';
@@ -60,12 +61,20 @@ export default function Home() {
       .map((t) => ({
         id: t.id,
         image:
-          t.thumbnail_uri ||
+          t.pages?.[0]?.previewImageUrl ||
+          t.thumbnail_url ||
           t.template_image_url ||
           t.pages?.[0]?.imageUrl ||
           '',
-        title: t.name,
-        link: `/e-card/${slugify([t.category_name ?? '', t.subcategory_name ?? '', t.name])}`,
+        title: t.title,
+        link: (() => {
+          const cat = (t as any).category_slug || strSlugify((t as any).category_name || '');
+          const sub = (t as any).subcategory_slug || strSlugify((t as any).subcategory_name || '');
+          const card = (t as any).slug || strSlugify(t.title || '');
+          if (cat && sub && card) return `/e-card/${cat}/${sub}/${card}`;
+          if (cat && card) return `/e-card/${cat}/${card}`;
+          return `/e-card/${card}`;
+        })(),
       }))
       .filter((item) => item.image);
   }, [templates]);

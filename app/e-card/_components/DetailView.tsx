@@ -53,7 +53,8 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
       : [
           {
             imageUrl:
-              template.thumbnail_uri ||
+              template.pages?.[0]?.previewImageUrl ||
+              template.thumbnail_url ||
               template.template_image_url ||
               template.pages?.[0]?.imageUrl,
           },
@@ -85,10 +86,10 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
               <CarouselContent>
                 {pages.map((page, idx) => (
                   <CarouselItem key={idx}>
-                    {page.imageUrl ? (
+                    {(page as any).previewImageUrl || page.imageUrl ? (
                       <img
-                        src={page.imageUrl}    
-                        alt={`${template.name} page ${idx + 1}`}
+                        src={(page as any).previewImageUrl || page.imageUrl}
+                        alt={`${template.title} page ${idx + 1}`}
                         className="w-full h-full"
                       />
                     ) : (
@@ -136,7 +137,7 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
         {/* DETAILS */}
         <div className="flex flex-col justify-start pt-2">
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900">
-            {template.name}
+            {template.title}
           </h1>
 
           {template.description && (

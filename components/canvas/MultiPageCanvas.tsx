@@ -110,7 +110,13 @@ export function MultiPageCanvas({
         // Load only fonts that are actually used on this page to speed up render
         const fontsInUse = new Set<string>((currentPage.textElements || []).map((t) => t.fontFamily).filter(Boolean));
         const fontsToLoad = (customFonts || []).filter((f) => fontsInUse.has(f.name));
+        
+        // Pre-load fonts before creating canvas
+        console.log('[MultiPageCanvas] Pre-loading fonts:', fontsToLoad.map(f => f.name));
         await loadCustomFonts(fontsToLoad);
+        
+        // Additional wait to ensure fonts are truly ready
+        await new Promise(resolve => setTimeout(resolve, 200));
 
         if (!isMounted) {
           isInitializing.current = false;

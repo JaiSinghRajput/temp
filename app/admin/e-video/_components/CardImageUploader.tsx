@@ -5,16 +5,17 @@ import { uploadToCloudinary } from '@/lib/cloudinary';
 interface Props {
   imageUrl: string;
   onChange: (url: string, publicId?: string) => void;
+  className?: string;
 }
 
-export function CardImageUploader({ imageUrl, onChange }: Props) {
+export function CardImageUploader({ imageUrl, onChange, className }: Props) {
   const handleUpload = async (file: File) => {
     const res = await uploadToCloudinary(file);
     onChange(res.secureUrl, res.publicId);
   };
 
   return (
-    <div className="space-y-2">
+    <div className={`space-y-2 ${className}`}>
       <label className="text-sm text-gray-600">Card Image</label>
 
       <input

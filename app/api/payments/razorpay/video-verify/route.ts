@@ -35,15 +35,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Update request with payment details
+    // Update user_custom_content with payment details
     await pool.query<ResultSetHeader>(
-      `UPDATE e_video_requests 
-       SET payment_status = 'paid', 
-           payment_id = ?, 
-           payment_order_id = ?,
-           payment_signature = ?
+      `UPDATE user_custom_content 
+       SET status = 'paid'
        WHERE id = ?`,
-      [razorpay_payment_id, razorpay_order_id, razorpay_signature, request_id]
+      [request_id]
+    );
+
+    // Create payment record
+    await pool.query<ResultSetHeader>(
+      `INSERT INTO payments (order_id, provider, provider_reference, amount, currency, status)
+       SELECT ?, 'razorpay', ?, 0, 'INR', 'success'
+       FROM user_custom_content WHERE id = ? LIMIT 1`,
+      [request_id, razorpay_payment_id, request_id]
     );
 
     return NextResponse.json({

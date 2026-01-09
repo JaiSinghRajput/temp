@@ -17,7 +17,12 @@ export default function AdminTemplatesPage() {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('/api/templates');
+      const response = await fetch('/api/templates', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        }
+      });
       const result = await response.json();
       if (result.success) setTemplates(result.data);
     } catch (error) {

@@ -3,15 +3,21 @@ import pool from '@/lib/db';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 import { slugify } from '@/lib/utils';
 
+// GET all parent categories (ecard, video, etc.)
 export async function GET() {
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, name, description, status, created_at FROM card_categories ORDER BY name ASC'
+      `SELECT id, name, slug, is_active
+       FROM categories 
+       WHERE parent_id IS NULL AND category_type = 'card'
+       ORDER BY name ASC`
     );
 
     const shaped = rows.map((row) => ({
-      ...row,
-      slug: slugify(String((row as any).name || '')),
+      id: (row as any).id,
+      name: (row as any).name,
+      slug: (row as any).slug,
+      is_active: (row as any).is_active,
     }));
 
     return NextResponse.json({ success: true, data: shaped });
@@ -21,9 +27,10 @@ export async function GET() {
   }
 }
 
+// POST create a new parent category
 export async function POST(request: NextRequest) {
   try {
-    const { name, description } = await request.json();
+    const { name } = await request.json();
 
     if (!name || !name.trim()) {
       return NextResponse.json(
@@ -32,9 +39,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const slug = slugify(name.trim());
+
     const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO card_categories (name, description, status) VALUES (?, ?, 1)',
-      [name.trim(), description || null]
+      `INSERT INTO categories (name, slug, category_type, parent_id, is_active)
+       VALUES (?, ?, 'card', NULL, ?)`
+      , [name.trim(), slug, true]
     );
 
     return NextResponse.json({
@@ -42,16 +52,16 @@ export async function POST(request: NextRequest) {
       data: {
         id: result.insertId,
         name,
-        description: description || null,
-        status: 1,
-        slug: slugify(name),
+        slug,
+        is_active: true,
+        created_at: new Date().toISOString(),
       },
     });
   } catch (error: any) {
     console.error('Error creating category:', error);
     if (error.code === 'ER_DUP_ENTRY') {
       return NextResponse.json(
-        { success: false, error: 'Category name already exists' },
+        { success: false, error: 'Category slug already exists' },
         { status: 400 }
       );
     }

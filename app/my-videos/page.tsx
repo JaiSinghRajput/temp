@@ -185,11 +185,24 @@ export default function MyVideosPage() {
           </div>
         ) : (
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm divide-y">
-            {requests.map((req) => {
+            {requests.map((req, idx) => {
               const isPremium = req.template_pricing_type === 'premium';
               const isPaid = req.payment_status === 'paid';
+              const templatePath = req.template_slug
+                ? req.template_category_slug && req.template_subcategory_slug
+                  ? `/e-videos/${req.template_category_slug}/${req.template_subcategory_slug}/${req.template_slug}`
+                  : `/e-videos/${req.template_slug}`
+                : '/e-videos';
+              const requestPath = req.template_slug
+                ? req.template_category_slug && req.template_subcategory_slug
+                  ? `/e-videos/${req.template_category_slug}/${req.template_subcategory_slug}/${req.template_slug}/request?requestId=${req.id}`
+                  : `/e-videos/${req.template_slug}/request?requestId=${req.id}`
+                : '/e-videos';
+
+              const key = `${req.id}-${idx}`;
+
               return (
-                <div key={req.id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div key={key} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-gray-900">Request #{req.id}</span>
@@ -219,7 +232,7 @@ export default function MyVideosPage() {
                   <div className="flex items-center gap-2">
                     {req.status === 'draft' && req.template_slug && (
                       <Link
-                        href={`/e-videos/${req.template_slug}`}
+                        href={requestPath}
                         className="px-4 py-2 rounded-lg border text-sm font-semibold text-gray-800 hover:bg-gray-50"
                       >
                         Resume Draft
@@ -235,7 +248,7 @@ export default function MyVideosPage() {
                       </button>
                     )}
                     <Link
-                      href={req.template_slug ? `/e-videos/${req.template_slug}` : '/e-videos'}
+                      href={templatePath}
                       className="px-4 py-2 rounded-lg border text-sm font-semibold text-gray-800 hover:bg-gray-50"
                     >
                       View Template

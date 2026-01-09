@@ -28,8 +28,8 @@ const withUniqueSlug = async (title: string) => {
 
   while (true) {
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id FROM e_video_templates WHERE slug = ? LIMIT 1',
-      [candidate]
+      'SELECT id FROM content_items WHERE slug = ? AND type = ? LIMIT 1',
+      [candidate, 'video']
     );
     if (rows.length === 0) return candidate;
     attempt += 1;
@@ -45,26 +45,28 @@ export async function GET(req: NextRequest) {
     const categorySlug = searchParams.get('category_slug');
     const subcategorySlug = searchParams.get('subcategory_slug');
 
-    const filters: string[] = ['t.is_active = TRUE'];
-    const params: any[] = [];
+    const filters: string[] = ['ci.type = ?', 'ci.is_active = TRUE'];
+    const params: any[] = ['video'];
 
+    // Filter by category
     if (categoryId) {
-      filters.push('t.category_id = ?');
+      filters.push('c_main.id = ?');
       params.push(Number(categoryId));
     }
-
-    if (subcategoryId) {
-      filters.push('t.subcategory_id = ?');
-      params.push(Number(subcategoryId));
-    }
-
+    
     if (categorySlug) {
-      filters.push('vc.slug = ?');
+      filters.push('c_main.slug = ?');
       params.push(categorySlug);
     }
 
+    // Filter by subcategory
+    if (subcategoryId) {
+      filters.push('c_sub.id = ?');
+      params.push(Number(subcategoryId));
+    }
+    
     if (subcategorySlug) {
-      filters.push('vsc.slug = ?');
+      filters.push('c_sub.slug = ?');
       params.push(subcategorySlug);
     }
 
@@ -72,57 +74,81 @@ export async function GET(req: NextRequest) {
 
     const [templates] = await pool.query<RowDataPacket[]>(
       `SELECT 
-        t.*, 
-         vc.name AS category_name,
-         vc.slug AS category_slug,
-         vsc.name AS subcategory_name,
-         vsc.slug AS subcategory_slug
-       FROM e_video_templates t
-       LEFT JOIN video_categories vc ON vc.id = t.category_id
-       LEFT JOIN video_subcategories vsc ON vsc.id = t.subcategory_id
+        ci.id,
+        ci.type,
+        ci.title,
+        ci.slug,
+        ci.description,
+        ci.is_active,
+        ci.created_at,
+        ci.updated_at,
+        vt.preview_video_url,
+        vt.preview_thumbnail_url,
+        MAX(p.price) as price,
+        GROUP_CONCAT(DISTINCT IF(c_main.id IS NOT NULL, CONCAT(c_main.id, ':', c_main.slug), NULL)) as category_data,
+        GROUP_CONCAT(DISTINCT IF(c_sub.id IS NOT NULL, CONCAT(c_sub.id, ':', c_sub.slug), NULL)) as subcategory_data
+       FROM content_items ci
+       INNER JOIN video_templates vt ON vt.content_id = ci.id
+       LEFT JOIN products p ON p.content_id = ci.id
+       LEFT JOIN category_links cl_main ON cl_main.target_id = ci.id AND cl_main.target_type = 'content'
+       LEFT JOIN categories c_main ON c_main.id = cl_main.category_id AND c_main.parent_id IS NULL
+       LEFT JOIN category_links cl_sub ON cl_sub.target_id = ci.id AND cl_sub.target_type = 'content'
+       LEFT JOIN categories c_sub ON c_sub.id = cl_sub.category_id AND c_sub.parent_id IS NOT NULL
        ${whereClause}
-       ORDER BY t.created_at DESC`,
+       GROUP BY ci.id
+       ORDER BY ci.created_at DESC`,
       params
     );
 
-    const [cards] = await pool.query<RowDataPacket[]>(
-      'SELECT * FROM e_video_cards ORDER BY sort_order ASC, id ASC'
+    // Fetch cards for each template
+    const templatesWithCards = await Promise.all(
+      templates.map(async (template: any) => {
+        const [cardsData] = await pool.query<RowDataPacket[]>(
+          `SELECT metadata FROM content_assets WHERE content_id = ? AND asset_type = 'video_cards' LIMIT 1`,
+          [template.id]
+        );
+
+        let cards = [];
+        if (cardsData.length > 0) {
+          const metadata = (cardsData[0] as any).metadata;
+          cards = typeof metadata === 'string' ? JSON.parse(metadata) : metadata || [];
+        }
+
+        // Parse category data
+        let category_slug = null;
+        let category_id = null;
+        let subcategory_slug = null;
+        let subcategory_id = null;
+
+        if (template.category_data) {
+          const [id, slug] = template.category_data.split(',')[0].split(':');
+          category_id = parseInt(id);
+          category_slug = slug;
+        }
+
+        if (template.subcategory_data) {
+          const [id, slug] = template.subcategory_data.split(',')[0].split(':');
+          subcategory_id = parseInt(id);
+          subcategory_slug = slug;
+        }
+
+        return {
+          ...template,
+          price: template.price ? parseFloat(template.price) : null,
+          cards,
+          category_slug,
+          category_id,
+          subcategory_slug,
+          subcategory_id,
+        };
+      })
     );
 
-    const [fields] = await pool.query<RowDataPacket[]>(
-      'SELECT * FROM e_video_card_fields ORDER BY sort_order ASC, id ASC'
-    );
-
-    const fieldsByCard = new Map<number, VideoInviteField[]>();
-    fields.forEach((row) => {
-      const parsedOptions = safeParse<string[] | null>((row as any).options, null);
-      const entry: VideoInviteField = { ...(row as any), options: parsedOptions };
-      const list = fieldsByCard.get((row as any).card_id) || [];
-      list.push(entry);
-      fieldsByCard.set((row as any).card_id, list);
-    });
-
-    const cardsByTemplate = new Map<number, VideoInviteCard[]>();
-    cards.forEach((row) => {
-      const entry: VideoInviteCard = {
-        ...(row as any),
-        fields: fieldsByCard.get((row as any).id) || [],
-      };
-      const list = cardsByTemplate.get((row as any).template_id) || [];
-      list.push(entry);
-      cardsByTemplate.set((row as any).template_id, list);
-    });
-
-    const data: VideoInviteTemplate[] = templates.map((row) => ({
-      ...(row as any),
-      cards: cardsByTemplate.get((row as any).id) || [],
-    }));
-
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({ success: true, data: templatesWithCards });
   } catch (error) {
-    console.error('Error fetching e-video templates:', error);
+    console.error('Error fetching video templates:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch e-video templates' },
+      { success: false, error: 'Failed to fetch video templates' },
       { status: 500 }
     );
   }
@@ -135,6 +161,7 @@ export async function POST(request: NextRequest) {
     const {
       title,
       description,
+      price,
       preview_video_url,
       preview_video_public_id,
       preview_thumbnail_url,
@@ -144,6 +171,7 @@ export async function POST(request: NextRequest) {
     } = body as {
       title?: string;
       description?: string;
+      price?: number | null;
       preview_video_url?: string;
       preview_video_public_id?: string;
       preview_thumbnail_url?: string;
@@ -168,60 +196,54 @@ export async function POST(request: NextRequest) {
 
     await conn.beginTransaction();
 
+    const [contentResult] = await conn.query<ResultSetHeader>(
+      `INSERT INTO content_items (type, title, slug, description, is_active)
+       VALUES (?, ?, ?, ?, ?)`,
+      ['video', title, slug, description || null, 1]
+    );
+
+    const contentId = contentResult.insertId;
+
     const [templateResult] = await conn.query<ResultSetHeader>(
-      `INSERT INTO e_video_templates
-        (title, slug, description, preview_video_url, preview_video_public_id, preview_thumbnail_url, category_id, subcategory_id, price)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+      `INSERT INTO video_templates (content_id, preview_video_url, preview_thumbnail_url)
+       VALUES (?, ?, ?)`,
       [
-        title,
-        slug,
-        description || null,
+        contentId,
         preview_video_url,
-        preview_video_public_id || null,
         preview_thumbnail_url || null,
-        category_id || null,
-        subcategory_id || null,
-        body.price ?? null,
       ]
     );
 
-    const templateId = templateResult.insertId;
+    // Save product with price if provided
+    if (price !== null && price !== undefined) {
+      await conn.query<ResultSetHeader>(
+        `INSERT INTO products (content_id, name, type, price, is_active)
+         VALUES (?, ?, ?, ?, ?)`,
+        [contentId, title, 'digital', price, 1]
+      );
+    }
 
-    if (Array.isArray(cards) && cards.length > 0) {
-      for (const [cardIndex, card] of cards.entries()) {
-        const [cardResult] = await conn.query<ResultSetHeader>(
-          `INSERT INTO e_video_cards (template_id, card_image_url, card_image_public_id, sort_order)
-           VALUES (?, ?, ?, ?)` ,
-          [
-            templateId,
-            card.card_image_url || null,
-            card.card_image_public_id || null,
-            card.sort_order ?? cardIndex,
-          ]
-        );
+    if (category_id) {
+      await conn.query<ResultSetHeader>(
+        `INSERT INTO category_links (category_id, target_type, target_id) VALUES (?, ?, ?)`,
+        [category_id, 'content', contentId]
+      );
+    }
 
-        const cardId = cardResult.insertId;
+    if (subcategory_id) {
+      await conn.query<ResultSetHeader>(
+        `INSERT INTO category_links (category_id, target_type, target_id) VALUES (?, ?, ?)`,
+        [subcategory_id, 'content', contentId]
+      );
+    }
 
-        if (Array.isArray(card.fields) && card.fields.length > 0) {
-          for (const field of card.fields) {
-            await conn.query<ResultSetHeader>(
-              `INSERT INTO e_video_card_fields
-                (card_id, name, label, field_type, required, helper_text, options, sort_order)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)` ,
-              [
-                cardId,
-                field.name,
-                field.label,
-                field.field_type,
-                field.required ?? true,
-                field.helper_text || null,
-                field.options ? JSON.stringify(field.options) : null,
-                field.sort_order ?? 0,
-              ]
-            );
-          }
-        }
-      }
+    // Store cards data as JSON asset
+    if (cards && cards.length > 0) {
+      await conn.query<ResultSetHeader>(
+        `INSERT INTO content_assets (content_id, asset_type, url, metadata)
+         VALUES (?, ?, ?, ?)`,
+        [contentId, 'video_cards', '', JSON.stringify(cards)]
+      );
     }
 
     await conn.commit();
@@ -229,10 +251,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        id: templateId,
+        id: contentId,
         title,
         slug,
         description: description || null,
+        price: price || null,
         preview_video_url,
         preview_video_public_id: preview_video_public_id || null,
         preview_thumbnail_url: preview_thumbnail_url || null,
@@ -242,7 +265,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error creating e-video template:', error);
+    console.error('Error creating video template:', error);
     try {
       await conn.rollback();
     } catch (rollbackError) {
@@ -265,6 +288,7 @@ export async function PUT(request: NextRequest) {
       id,
       title,
       description,
+      price,
       preview_video_url,
       preview_video_public_id,
       preview_thumbnail_url,
@@ -275,6 +299,7 @@ export async function PUT(request: NextRequest) {
       id?: number;
       title?: string;
       description?: string | null;
+      price?: number | null;
       preview_video_url?: string;
       preview_video_public_id?: string | null;
       preview_thumbnail_url?: string | null;
@@ -296,8 +321,8 @@ export async function PUT(request: NextRequest) {
     }
 
     const [existingRows] = await conn.query<RowDataPacket[]>(
-      'SELECT slug FROM e_video_templates WHERE id = ? LIMIT 1',
-      [id]
+      'SELECT slug FROM content_items WHERE id = ? AND type = ? LIMIT 1',
+      [id, 'video']
     );
 
     if (existingRows.length === 0) {
@@ -309,75 +334,83 @@ export async function PUT(request: NextRequest) {
     await conn.beginTransaction();
 
     await conn.query<ResultSetHeader>(
-      `UPDATE e_video_templates
-         SET title = ?, description = ?, preview_video_url = ?, preview_video_public_id = ?, preview_thumbnail_url = ?, category_id = ?, subcategory_id = ?, price = ?
-       WHERE id = ?` ,
+      `UPDATE content_items
+         SET title = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND type = ?` ,
       [
         title,
         description || null,
+        id,
+        'video'
+      ]
+    );
+
+    await conn.query<ResultSetHeader>(
+      `UPDATE video_templates
+         SET preview_video_url = ?, preview_thumbnail_url = ?
+       WHERE content_id = ?` ,
+      [
         preview_video_url,
-        preview_video_public_id || null,
         preview_thumbnail_url || null,
-        category_id || null,
-        subcategory_id || null,
-        body.price ?? null,
         id,
       ]
     );
 
-    const [existingCards] = await conn.query<RowDataPacket[]>(
-      'SELECT id FROM e_video_cards WHERE template_id = ?',
-      [id]
+    // Update or insert product price
+    if (price !== null && price !== undefined) {
+      const [existingProduct] = await conn.query<RowDataPacket[]>(
+        'SELECT id FROM products WHERE content_id = ? LIMIT 1',
+        [id]
+      );
+
+      if (existingProduct.length > 0) {
+        await conn.query<ResultSetHeader>(
+          'UPDATE products SET price = ? WHERE content_id = ?',
+          [price, id]
+        );
+      } else {
+        await conn.query<ResultSetHeader>(
+          `INSERT INTO products (content_id, name, type, price, is_active)
+           VALUES (?, ?, ?, ?, ?)`,
+          [id, title, 'digital', price, 1]
+        );
+      }
+    }
+
+    // Update category links
+    await conn.query<ResultSetHeader>(
+      'DELETE FROM category_links WHERE target_id = ? AND target_type = ?',
+      [id, 'content']
     );
 
-    const cardIds = existingCards.map((c) => (c as any).id);
-    if (cardIds.length > 0) {
+    if (category_id) {
       await conn.query<ResultSetHeader>(
-        'DELETE FROM e_video_card_fields WHERE card_id IN (?)',
-        [cardIds]
+        'INSERT INTO category_links (category_id, target_type, target_id) VALUES (?, ?, ?)',
+        [category_id, 'content', id]
       );
     }
 
-    await conn.query<ResultSetHeader>(
-      'DELETE FROM e_video_cards WHERE template_id = ?',
-      [id]
-    );
+    if (subcategory_id) {
+      await conn.query<ResultSetHeader>(
+        'INSERT INTO category_links (category_id, target_type, target_id) VALUES (?, ?, ?)',
+        [subcategory_id, 'content', id]
+      );
+    }
 
-    if (Array.isArray(cards) && cards.length > 0) {
-      for (const [cardIndex, card] of cards.entries()) {
-        const [cardResult] = await conn.query<ResultSetHeader>(
-          `INSERT INTO e_video_cards (template_id, card_image_url, card_image_public_id, sort_order)
-           VALUES (?, ?, ?, ?)` ,
-          [
-            id,
-            card.card_image_url || null,
-            card.card_image_public_id || null,
-            card.sort_order ?? cardIndex,
-          ]
-        );
+    // Update cards data
+    if (cards && cards.length > 0) {
+      // Delete existing cards asset
+      await conn.query<ResultSetHeader>(
+        'DELETE FROM content_assets WHERE content_id = ? AND asset_type = ?',
+        [id, 'video_cards']
+      );
 
-        const cardId = cardResult.insertId;
-
-        if (Array.isArray(card.fields) && card.fields.length > 0) {
-          for (const field of card.fields) {
-            await conn.query<ResultSetHeader>(
-              `INSERT INTO e_video_card_fields
-                (card_id, name, label, field_type, required, helper_text, options, sort_order)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)` ,
-              [
-                cardId,
-                field.name,
-                field.label,
-                field.field_type,
-                field.required ?? true,
-                field.helper_text || null,
-                field.options ? JSON.stringify(field.options) : null,
-                field.sort_order ?? 0,
-              ]
-            );
-          }
-        }
-      }
+      // Insert updated cards asset
+      await conn.query<ResultSetHeader>(
+        `INSERT INTO content_assets (content_id, asset_type, url, metadata)
+         VALUES (?, ?, ?, ?)`,
+        [id, 'video_cards', '', JSON.stringify(cards)]
+      );
     }
 
     await conn.commit();
@@ -387,17 +420,21 @@ export async function PUT(request: NextRequest) {
       data: {
         id,
         slug: existingSlug,
+        price: price || null,
+        category_id: category_id || null,
+        subcategory_id: subcategory_id || null,
+        cards: cards || [],
       },
     });
   } catch (error) {
-    console.error('Error updating e-video template:', error);
+    console.error('Error updating video template:', error);
     try {
       await conn.rollback();
     } catch (rollbackError) {
       console.error('Rollback failed:', rollbackError);
     }
     return NextResponse.json(
-      { success: false, error: 'Failed to update e-video template' },
+      { success: false, error: 'Failed to update video template' },
       { status: 500 }
     );
   } finally {

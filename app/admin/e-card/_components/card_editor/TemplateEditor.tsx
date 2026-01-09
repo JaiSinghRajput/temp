@@ -20,6 +20,7 @@ import colorService from '@/services/color.service';
 import type { Category, Subcategory, CustomFont } from '@/lib/types';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { slugify } from '@/lib/utils';
 
 const DEFAULT_TEMPLATE_IMAGE = '';
 
@@ -141,7 +142,7 @@ const useFontManager = () => {
 const useCategoryManager = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
-  const [categoryId, setCategoryId] = useState(1);
+  const [categoryId, setCategoryId] = useState<number | null>(null);
   const [subcategoryId, setSubcategoryId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -149,7 +150,13 @@ const useCategoryManager = () => {
       try {
         const res = await fetch('/api/categories');
         const json = await res.json();
-        if (json.success) setCategories(json.data);
+        if (json.success && json.data.length > 0) {
+          setCategories(json.data);
+          // Set first category as default if not already set
+          if (!categoryId) {
+            setCategoryId(json.data[0].id);
+          }
+        }
       } catch (e) {
         console.error('Failed to load categories:', e);
       }
@@ -196,7 +203,7 @@ const useColorManager = () => {
         }
       } catch (err) {
         console.error('Error loading colors:', err);
-        setCardColor(COLOR_OPTIONS[0].value);
+        setCardColor(COLOR_OPTIONS[0]?.value || '#FFFFFF');
       }
     };
     loadColors();
@@ -357,28 +364,71 @@ export default function TemplateEditor({
   const isMultipage = pages.length > 1;
 
   // ============================================================================
+  // NORMALIZE API RESPONSE
+  // ============================================================================
+  // Maps new schema response to expected component fields
+  const normalizeInitialData = (data: any) => {
+    if (!data) return null;
+    
+    // Extract background image from canvas_schema if not provided separately
+    const canvasSchema = data.canvas_data || data.canvas_schema || {};
+    const backgroundImageUrl = data.template_image_url || canvasSchema?.backgroundImageUrl || '';
+    const cloudinaryPublicId = data.cloudinary_public_id || canvasSchema?.backgroundCloudinaryPublicId || null;
+    const colorHex = data.color || canvasSchema?.color || null;
+    const colorName = data.color_name || canvasSchema?.colorName || null;
+    
+    return {
+      // Map new schema fields to component expectations
+      name: data.name || data.title || '',
+      description: data.description || '',
+      category_id: data.category_id || null,
+      subcategory_id: data.subcategory_id || null,
+      pricing_type: data.pricing_type || 'free',
+      price: data.price || 0,
+      color: colorHex || '#FFFFFF',
+      color_name: colorName,
+      background_id: data.background_id || null,
+      thumbnail_uri: data.thumbnail_uri || data.thumbnail_url || null,
+      thumbnail_public_id: data.thumbnail_public_id || null,
+      // Template background image - check multiple sources
+      template_image_url: backgroundImageUrl,
+      cloudinary_public_id: cloudinaryPublicId,
+      
+      // Canvas data - handle both old and new schema
+      canvas_data: canvasSchema,
+      
+      // Pages for multipage templates
+      pages: data.pages || [],
+      is_multipage: data.is_multipage || false,
+    };
+  };
+
+  // ============================================================================
   // INITIALIZE FROM EDIT DATA
   // ============================================================================
   useEffect(() => {
     if (mode !== 'edit' || !initialData) return;
 
     textElementsLoadedRef.current = false; // Reset flag
+    
+    // Normalize the incoming data
+    const normalizedData = normalizeInitialData(initialData);
+    if (!normalizedData) return;
 
-    setTemplateName(initialData.name);
-    setTemplateDescription(initialData.description || '');
-    setCategoryId(initialData.category_id || 1);
-    setSubcategoryId(initialData.subcategory_id || null);
-    setPricingType(initialData.pricing_type || 'free');
-    setPrice(String(initialData.price || ''));
-    setCardColor(initialData.color || COLOR_OPTIONS[0].value);
-    setBackgroundId(initialData.background_id || null);
-    setPreviewImageUrl(initialData.thumbnail_uri || null);
-    setPreviewPublicId(initialData.thumbnail_public_id || null);
+    setTemplateName(normalizedData.name || '');
+    setTemplateDescription(normalizedData.description || '');
+    // Defer category/subcategory selection until options are loaded via slug-based effects below
+    setPricingType(normalizedData.pricing_type || 'free');
+    setPrice(String(normalizedData.price || ''));
+    setCardColor(normalizedData.color || COLOR_OPTIONS[0]?.value || '#FFFFFF');
+    setBackgroundId(normalizedData.background_id || null);
+    setPreviewImageUrl(normalizedData.thumbnail_uri || null);
+    setPreviewPublicId(normalizedData.thumbnail_public_id || null);
 
-    let imageUrl = initialData.template_image_url;
+    let imageUrl = normalizedData.template_image_url || '';
 
-    if (initialData.is_multipage && initialData.pages?.length) {
-      const normalizedPages = initialData.pages.map((p: any) => ({
+    if (normalizedData.is_multipage && normalizedData.pages?.length) {
+      const normalizedPages = normalizedData.pages.map((p: any) => ({
         imageUrl: p.image_url || p.imageUrl,
         publicId: (p.cloudinary_public_id || p.cloudinaryPublicId) ?? null,
         previewImageUrl: p.preview_image_url || p.previewImageUrl || null,
@@ -393,14 +443,50 @@ export default function TemplateEditor({
       imageUrl = normalizedPages[0]?.imageUrl || imageUrl;
     }
 
+    // Always set the image URL even if empty - canvas will still initialize
+    setTemplateImageUrl(imageUrl || DEFAULT_TEMPLATE_IMAGE);
+    if (normalizedData.cloudinary_public_id) {
+      setCloudinaryPublicId(normalizedData.cloudinary_public_id);
+    }
+    
+    // Only show loading if we have a real image URL to load
     if (imageUrl && imageUrl !== DEFAULT_TEMPLATE_IMAGE) {
-      setTemplateImageUrl(imageUrl);
-      setCloudinaryPublicId(initialData.cloudinary_public_id || null);
       setIsBackgroundLoading(true);
     } else {
       setIsBackgroundLoading(false);
     }
   }, [mode, initialData]);
+
+  // ============================================================================
+  // PRESELECT CATEGORY/SUBCATEGORY BY SLUGS AFTER OPTIONS LOAD
+  // ============================================================================
+  // Once categories are loaded, select the category that matches the template's category_slug
+  useEffect(() => {
+    if (mode !== 'edit' || !initialData) return;
+    if (!categories || categories.length === 0) return;
+
+    const catSlug: string | undefined = initialData.category_slug || undefined;
+    if (!catSlug) return;
+
+    const cat = categories.find(c => c.slug === catSlug);
+    if (cat) {
+      setCategoryId(Number(cat.id));
+    }
+  }, [mode, initialData, categories, setCategoryId]);
+
+  // Once subcategories for the selected category are loaded, pick the subcategory by subcategory_slug
+  useEffect(() => {
+    if (mode !== 'edit' || !initialData) return;
+    if (!categoryId) return;
+    const subSlug: string | undefined = initialData.subcategory_slug || undefined;
+    if (!subSlug) return;
+    if (!subcategories || subcategories.length === 0) return;
+
+    const sub = subcategories.find(s => s.slug === subSlug);
+    if (sub) {
+      setSubcategoryId(Number(sub.id));
+    }
+  }, [mode, initialData, categoryId, subcategories, setSubcategoryId]);
 
   // ============================================================================
   // CANVAS INITIALIZATION
@@ -548,8 +634,11 @@ export default function TemplateEditor({
     textElementsLoadedRef.current = true; // Mark as loaded
 
     const loadTextElements = async () => {
-      const initialPageText = initialData.pages?.[0]?.canvasData?.textElements || [];
-      const singlePageText = initialData.canvas_data?.textElements || [];
+      // Normalize canvas schema to expected format
+      const canvasSchema = initialData.canvas_data || initialData.canvas_schema || {};
+      
+      const initialPageText = pages?.[0]?.canvasData?.textElements || [];
+      const singlePageText = canvasSchema?.textElements || [];
 
       // For multipage, ONLY use page data to avoid duplication
       const rawTextElements = initialData.is_multipage && initialPageText.length
@@ -560,8 +649,8 @@ export default function TemplateEditor({
 
       const dedupedTextElements = TextElementUtils.deduplicateElements(rawTextElements);
 
-      const originalCanvasWidth = initialData.canvas_data?.canvasWidth || 800;
-      const originalCanvasHeight = initialData.canvas_data?.canvasHeight || 600;
+      const originalCanvasWidth = canvasSchema?.canvasWidth || 800;
+      const originalCanvasHeight = canvasSchema?.canvasHeight || 600;
 
       // Normalize to new format with percentages
       const normalizedElements = dedupedTextElements.map((textData: any) =>
@@ -573,14 +662,13 @@ export default function TemplateEditor({
         new Set(normalizedElements.map((t: any) => t.fontFamily).filter(Boolean))
       );
       const fontsToLoad: CustomFont[] = [];
-
       for (const fontName of uniqueFonts) {
         const fontDef = managedFonts.find(f => f.name === fontName) ||
           loadedCustomFonts.find(f => f.name === fontName);
         if (fontDef) fontsToLoad.push(fontDef);
       }
 
-      const canvasCustomFonts = initialData.canvas_data?.customFonts || [];
+      const canvasCustomFonts = canvasSchema?.customFonts || [];
       if (Array.isArray(canvasCustomFonts)) {
         for (const font of canvasCustomFonts) {
           if (!fontsToLoad.some(f => f.name === font.name)) {
@@ -908,7 +996,7 @@ export default function TemplateEditor({
   };
 
   const buildCurrentPageSnapshot = () => {
-    if (!fabricCanvas.current || !cloudinaryPublicId) return null;
+    if (!fabricCanvas.current) return null;
 
     const objects = fabricCanvas.current.getObjects();
     const canvasWidth = fabricCanvas.current.width;
@@ -951,9 +1039,12 @@ export default function TemplateEditor({
       };
     });
 
+    // Prefer current page publicId if available, fallback to template-level
+    const currentPublicId = pages[currentPageIndex]?.publicId || cloudinaryPublicId || '';
+
     return {
-      imageUrl: templateImageUrl,
-      publicId: cloudinaryPublicId,
+      imageUrl: pages[currentPageIndex]?.imageUrl || templateImageUrl,
+      publicId: currentPublicId,
       canvasData: {
         textElements,
         canvasWidth,
@@ -963,7 +1054,9 @@ export default function TemplateEditor({
   };
 
   const addPage = async () => {
-    if (!cloudinaryPublicId || templateImageUrl === DEFAULT_TEMPLATE_IMAGE) {
+    // Allow adding a page if current page has a real background image
+    const currentImage = pages[currentPageIndex]?.imageUrl || templateImageUrl;
+    if (!currentImage || currentImage === DEFAULT_TEMPLATE_IMAGE) {
       alert('Please upload a background image for the current page before adding another page.');
       return;
     }
@@ -1180,7 +1273,7 @@ export default function TemplateEditor({
   };
 
   const handleSave = async () => {
-    if (!fabricCanvas.current || !templateName.trim()) {
+    if (!fabricCanvas.current || !(templateName || '').trim()) {
       alert('Please enter a template name');
       return;
     }
@@ -1259,6 +1352,11 @@ export default function TemplateEditor({
         canvasWidth,
         canvasHeight,
         customFonts: loadedCustomFonts,
+        // Include background image URL for retrieval during edit
+        backgroundImageUrl: templateImageUrl !== DEFAULT_TEMPLATE_IMAGE ? templateImageUrl : undefined,
+        backgroundCloudinaryPublicId: cloudinaryPublicId || undefined,
+        color: cardColor,
+        colorName: colors.find(c => c.hex_code === cardColor)?.name || undefined,
       };
 
       if (isMultipage) {
@@ -1283,21 +1381,28 @@ export default function TemplateEditor({
         }
       }
 
+      // Get the category/subcategory slugs from selected values
+      const selectedCategory = categories.find(c => c.id === BigInt(categoryId || 0));
+      const categorySlug = selectedCategory?.slug || '';
+      const selectedSubcategory = subcategories.find(s => s.id === (subcategoryId || 0));
+      const subcategorySlug = selectedSubcategory?.slug || '';
+      const selectedColor = colors.find(c => c.hex_code === cardColor);
+
       const payload = {
-        name: templateName,
+        title: templateName,
+        slug: slugify(templateName),
         description: templateDescription,
-        category_id: categoryId,
-        subcategory_id: subcategoryId,
-        color: cardColor || null,
+        canvas_schema: canvasData,
+        thumbnail_url: thumbSecureUrl,
+        template_image_url: templateImageUrl !== DEFAULT_TEMPLATE_IMAGE ? templateImageUrl : '',
+        cloudinary_public_id: cloudinaryPublicId || null,
+        category_slug: categorySlug,
+        subcategory_slug: subcategorySlug,
+        is_multipage: isMultipage,
         pricing_type: pricingType,
         price: pricingType === 'premium' ? Number(price) : 0,
-        is_multipage: isMultipage,
-        template_image_url: isMultipage && finalPages.length > 0 ? finalPages[0].imageUrl : templateImageUrl,
-        cloudinary_public_id: isMultipage && finalPages.length > 0 ? finalPages[0].publicId : cloudinaryPublicId,
-        thumbnail_uri: thumbSecureUrl,
-        thumbnail_public_id: thumbPublicId,
-        canvas_data: canvasData,
-        background_id: backgroundId,
+        color: cardColor,
+        color_name: selectedColor?.name || null,
       };
 
       if (onSave) {
@@ -1391,11 +1496,11 @@ export default function TemplateEditor({
                   <label className="text-[10px] font-black text-purple-600 uppercase tracking-widest">Category</label>
                   <select
                     className="w-full p-2 text-sm border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400 bg-white"
-                    value={categoryId}
-                    onChange={(e) => setCategoryId(parseInt(e.target.value, 10) || 1)}
+                    value={categoryId ?? ''}
+                    onChange={(e) => setCategoryId(e.target.value ? parseInt(e.target.value, 10) : null)}
                   >
                     {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
+                      <option key={c.id} value={String(c.id)}>
                         {c.name}
                       </option>
                     ))}
@@ -1622,7 +1727,7 @@ export default function TemplateEditor({
 
           <button
             onClick={handleSave}
-            disabled={isSaving || !templateName.trim()}
+            disabled={isSaving || !(templateName || '').trim()}
             className="w-full h-12 bg-primary hover:bg-primary/90 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold"
           >
             {isSaving ? 'Saving...' : mode === 'edit' ? '💾 Update' : '💾 Save'}

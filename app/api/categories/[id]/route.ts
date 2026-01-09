@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { slugify } from '@/lib/utils';
 
 export async function GET(
   request: NextRequest,
@@ -9,7 +10,7 @@ export async function GET(
   try {
     const { id } = await params;
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, name, description, status, created_at FROM card_categories WHERE id = ?',
+      'SELECT id, name, slug, parent_id, is_active FROM categories WHERE id = ? AND category_type = "card"',
       [id]
     );
 
@@ -33,7 +34,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const { name, description, status } = await request.json();
+    const { name, is_active } = await request.json();
 
     if (!name || !name.trim()) {
       return NextResponse.json(
@@ -42,9 +43,11 @@ export async function PUT(
       );
     }
 
+    const slug = slugify(name.trim());
+
     const [result] = await pool.query<ResultSetHeader>(
-      'UPDATE card_categories SET name = ?, description = ?, status = ? WHERE id = ?',
-      [name.trim(), description || null, status !== undefined ? status : 1, id]
+      `UPDATE categories SET name = ?, slug = ?, is_active = ? WHERE id = ? AND parent_id IS NULL AND category_type = "card"`,
+      [name.trim(), slug, is_active !== undefined ? is_active : true, id]
     );
 
     if (result.affectedRows === 0) {
@@ -59,7 +62,7 @@ export async function PUT(
     console.error('Error updating category:', error);
     if (error.code === 'ER_DUP_ENTRY') {
       return NextResponse.json(
-        { success: false, error: 'Category name already exists' },
+        { success: false, error: 'Category slug already exists' },
         { status: 400 }
       );
     }
@@ -77,7 +80,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     const [result] = await pool.query<ResultSetHeader>(
-      'DELETE FROM card_categories WHERE id = ?',
+      'DELETE FROM categories WHERE id = ? AND parent_id IS NULL AND category_type = "card"',
       [id]
     );
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { VideoInviteTemplate, VideoInviteField } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 import Stepper from "./Stepper";
@@ -19,6 +19,7 @@ export default function VideoRequestWizard({
   templateSlug: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
 
   const [template, setTemplate] = useState<VideoInviteTemplate | null>(null);
@@ -48,6 +49,39 @@ export default function VideoRequestWizard({
       document.body.appendChild(script);
     }
   }, [templateSlug]);
+
+  // Load draft payload if requestId is present
+  useEffect(() => {
+    const requestId = searchParams?.get('requestId');
+    if (!requestId) return;
+
+    const loadDraft = async () => {
+      try {
+        const res = await fetch(`/api/e-video/requests?id=${requestId}`);
+        const json = await res.json();
+        if (!json.success || !Array.isArray(json.data) || !json.data.length) return;
+
+        const request = json.data[0];
+        const payload = request.payload || {};
+        const restored: Record<number, Record<string, any>> = {};
+
+        Object.entries(payload).forEach(([key, value]) => {
+          const match = key.match(/^card_(\d+)_(.+)$/);
+          if (!match) return;
+          const idx = Number(match[1]);
+          const field = match[2];
+          if (!restored[idx]) restored[idx] = {};
+          restored[idx][field] = value;
+        });
+
+        setFieldValues(restored);
+      } catch (err) {
+        console.error('Failed to load draft payload', err);
+      }
+    };
+
+    loadDraft();
+  }, [searchParams]);
 
   if (loading || !template) {
     return <div className="min-h-screen bg-[#f7f4ef] p-8">Loading…</div>;
@@ -107,12 +141,13 @@ export default function VideoRequestWizard({
     try {
       setPaying(true);
       const payload = buildPayload();
+      const requestId = searchParams?.get('requestId');
 
-      const res = await fetch("/api/e-video/requests", {
-        method: "POST",
+      const res = await fetch(requestId ? "/api/e-video/requests" : "/api/e-video/requests", {
+        method: requestId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          template_id: template.id,
+          ...(requestId ? { id: Number(requestId) } : { template_id: template.id }),
           user_id: user.uid,
           requester_name: user.name,
           requester_email: user.email || null,
@@ -125,7 +160,7 @@ export default function VideoRequestWizard({
       const json = await res.json();
       if (!json.success) throw new Error(json.error || 'Failed to save draft');
 
-      toast.success('Draft saved. You can complete payment later.');
+      toast.success('Draft saved successfully. Complete payment during submission.');
       router.push('/my-videos');
     } catch (err: any) {
       toast.error(err?.message || 'Failed to save draft');
@@ -144,6 +179,7 @@ export default function VideoRequestWizard({
       setPaying(true);
 
       const payload = buildPayload();
+      const requestId = searchParams?.get('requestId');
 
       console.log('📤 [VideoRequestWizard] Submitting with:', {
         template_id: template.id,
@@ -155,28 +191,29 @@ export default function VideoRequestWizard({
         payload: payload,
       });
 
-      const createRes = await fetch("/api/e-video/requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          template_id: template.id,
-          user_id: user.uid,
-          requester_name: user.name,
-          requester_email: user.email || null,
-          requester_phone: user.mobile || null,
-          payload,
-        }),
-      });
-
-      const createJson = await createRes.json();
-      if (!createJson.success) {
-        throw new Error(createJson.error || "Failed to create request");
-      }
-
-      // ✅ FREE TEMPLATE or DEV MODE - skip payment
+      // ✅ FREE TEMPLATE - skip payment, set status to submitted immediately
       const isDev = process.env.NODE_ENV === 'development';
       
       if (!isPremium || isDev) {
+        const createRes = await fetch(requestId ? "/api/e-video/requests" : "/api/e-video/requests", {
+          method: requestId ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(requestId ? { id: Number(requestId) } : { template_id: template.id }),
+            user_id: user.uid,
+            requester_name: user.name,
+            requester_email: user.email || null,
+            requester_phone: user.mobile || null,
+            payload,
+            status: 'submitted',
+          }),
+        });
+
+        const createJson = await createRes.json();
+        if (!createJson.success) {
+          throw new Error(createJson.error || "Failed to submit request");
+        }
+
         if (isDev && isPremium) {
           toast.success(`Request submitted! (Dev mode: ₹${templatePrice} payment skipped)`);
         } else {
@@ -186,16 +223,41 @@ export default function VideoRequestWizard({
         return;
       }
 
-      // ✅ PRODUCTION + PREMIUM - trigger Razorpay
+      // ✅ PRODUCTION + PREMIUM - trigger Razorpay FIRST, then set status after payment
       const rzp = new window.Razorpay({
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         amount: Math.round(templatePrice * 100),
         currency: "INR",
         name: "Video Invitation",
         description: template.title,
-        handler: () => {
-          toast.success("Payment successful!");
-          router.push("/my-videos");
+        handler: async () => {
+          try {
+            // After payment succeeds, update status to submitted
+            const submitRes = await fetch(requestId ? "/api/e-video/requests" : "/api/e-video/requests", {
+              method: requestId ? "PUT" : "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...(requestId ? { id: Number(requestId) } : { template_id: template.id }),
+                user_id: user.uid,
+                requester_name: user.name,
+                requester_email: user.email || null,
+                requester_phone: user.mobile || null,
+                payload,
+                status: 'submitted',
+              }),
+            });
+
+            const submitJson = await submitRes.json();
+            if (!submitJson.success) {
+              throw new Error(submitJson.error || "Failed to update request status");
+            }
+
+            toast.success("Payment successful! Request submitted.");
+            router.push("/my-videos");
+          } catch (err: any) {
+            toast.error(err?.message || "Failed to update request after payment");
+            setPaying(false);
+          }
         },
         prefill: {
           name: user.name,
@@ -208,7 +270,6 @@ export default function VideoRequestWizard({
       rzp.open();
     } catch (err: any) {
       toast.error(err?.message || "Submission failed");
-    } finally {
       setPaying(false);
     }
   };

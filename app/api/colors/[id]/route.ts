@@ -10,7 +10,12 @@ export async function GET(
   try {
     const { id } = await params;
     const [colors] = await pool.query<RowDataPacket[]>(
-      'SELECT id, name, hex_code FROM color WHERE id = ?',
+      `SELECT 
+         id, 
+         url AS hex_code,
+         JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.name')) AS name
+       FROM content_assets 
+       WHERE id = ? AND asset_type = 'color'`,
       [id]
     );
 
@@ -59,8 +64,8 @@ export async function PUT(
     }
 
     const [result] = await pool.query<ResultSetHeader>(
-      'UPDATE color SET name = ?, hex_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [name, hex_code, id]
+      `UPDATE content_assets SET url = ?, metadata = JSON_OBJECT('name', ?) WHERE id = ? AND asset_type = 'color'`,
+      [hex_code, name, id]
     );
 
     if (result.affectedRows === 0) {
@@ -98,7 +103,7 @@ export async function DELETE(
     const { id } = await params;
 
     const [result] = await pool.query<ResultSetHeader>(
-      'DELETE FROM color WHERE id = ?',
+      `DELETE FROM content_assets WHERE id = ? AND asset_type = 'color'`,
       [id]
     );
 

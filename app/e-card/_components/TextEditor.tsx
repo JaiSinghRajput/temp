@@ -22,6 +22,7 @@ interface TextEditorProps {
   template: Template;
   currentPage?: number;
   onPageChange?: (page: number) => void;
+  onPreview?: (payload: PublishPayload) => void;
   onPublish?: (payload: PublishPayload) => void;
   isLoading?: boolean;
 }
@@ -31,6 +32,7 @@ export default function TextEditor({
   template,
   currentPage = 0,
   onPageChange,
+  onPreview,
   onPublish,
   isLoading = false,
 }: TextEditorProps) {
@@ -64,7 +66,11 @@ export default function TextEditor({
   const currentPageData = isMultipage ? template.pages![currentPage] : null;
   // Check if there are saved customizations for this page, otherwise use template data
   const pageCustomization = isMultipage ? pageCustomizations.get(currentPage) : undefined;
-  const canvasData = pageCustomization?.canvasData || currentPageData?.canvasData || template.canvas_data;
+  
+  // For multipage: use page-specific canvas data, for single: use template canvas_data
+  const canvasData = isMultipage && currentPageData?.canvasData
+    ? (pageCustomization?.canvasData || currentPageData.canvasData)
+    : (pageCustomization?.canvasData || template.canvas_data);
   
   if (isMultipage && canvasData) {
     console.log(`[TextEditor] Page ${currentPage} using:`, {
@@ -73,8 +79,15 @@ export default function TextEditor({
       firstTextElement: canvasData.textElements?.[0]?.text
     });
   }
-  const backgroundUrl = currentPageData?.imageUrl || template.template_image_url;
-  const backgroundId = currentPageData?.backgroundId || template.background_id;
+  
+  // For multipage: use page-specific background, for single: use template background
+  const backgroundUrl = isMultipage 
+    ? (currentPageData?.imageUrl || template.template_image_url)
+    : template.template_image_url;
+  
+  const backgroundId = isMultipage
+    ? currentPageData?.backgroundId
+    : template.background_id;
 
   // Get text elements from canvas data
   const textElements: TextElement[] = canvasData?.textElements || [];
@@ -108,54 +121,63 @@ export default function TextEditor({
 
     fabricCanvasRef.current = canvas;
 
-    // Load fonts from text elements (with fallback to CDN links API)
-    loadFontsFromElements(textElements, canvasData?.customFonts).catch((err) => {
-      console.warn('Font loading failed, continuing anyway:', err);
-    });
-
-    // Load canvas with text elements
-    loadTextOnlyCanvas({
-      canvas,
-      imageUrl: backgroundUrl,
-      backgroundId,
-      textElements,
-      canvasWidth,
-      canvasHeight,
-      scale,
-      onTextSelect: (id) => {
-        setSelectedTextId(id);
-        const textbox = textObjectsRef.current.get(id);
-        if (textbox) {
-          setSelectedText(textbox.text || '');
-        }
-        if (isMobile) {
-          setShowMobileEditor(true);
-        }
-      },
-      customFonts: canvasData?.customFonts,
-    })
-      .then(({ textObjects }) => {
-        textObjectsRef.current = textObjects;
-        setCanvasScale(scale);
-
-        // Set canvas for animations
-        setCanvas(canvas);
-
-        // Animate all text elements on load with fadeIn effect
-        const textboxArray = Array.from(textObjects.values());
-        if (textboxArray.length > 0) {
-          animateAllTexts(textboxArray, 'fadeIn', 800, 100);
-        }
+    // Pre-load fonts from text elements BEFORE rendering canvas
+    const fontLoadingPromise = loadFontsFromElements(textElements, canvasData?.customFonts)
+      .then(() => {
+        console.log('[TextEditor] Fonts loaded successfully');
+        // Wait a bit more to ensure fonts are truly available
+        return new Promise(resolve => setTimeout(resolve, 150));
       })
       .catch((err) => {
-        console.error('Error loading canvas:', err);
-        setError(`Failed to load canvas: ${err.message}`);
+        console.warn('[TextEditor] Font loading failed, continuing anyway:', err);
+        return new Promise(resolve => setTimeout(resolve, 150));
       });
+
+    // Load canvas with text elements AFTER fonts are ready
+    fontLoadingPromise.then(() => {
+      loadTextOnlyCanvas({
+        canvas,
+        imageUrl: backgroundUrl,
+        backgroundId,
+        textElements,
+        canvasWidth,
+        canvasHeight,
+        scale,
+        onTextSelect: (id) => {
+          setSelectedTextId(id);
+          const textbox = textObjectsRef.current.get(id);
+          if (textbox) {
+            setSelectedText(textbox.text || '');
+          }
+          if (isMobile) {
+            setShowMobileEditor(true);
+          }
+        },
+        customFonts: canvasData?.customFonts,
+      })
+        .then(({ textObjects }) => {
+          textObjectsRef.current = textObjects;
+          setCanvasScale(scale);
+
+          // Set canvas for animations
+          setCanvas(canvas);
+
+          // Animate all text elements on load with fadeIn effect
+          const textboxArray = Array.from(textObjects.values());
+          if (textboxArray.length > 0) {
+            animateAllTexts(textboxArray, 'fadeIn', 800, 100);
+          }
+        })
+        .catch((err) => {
+          console.error('Error loading canvas:', err);
+          setError(`Failed to load canvas: ${err.message}`);
+        });
+    });
 
     return () => {
       canvas.dispose();
     };
-  }, [canvasData, backgroundUrl, backgroundId, canvasWidth, canvasHeight, isMobile, currentPage]);
+  }, [canvasData, backgroundUrl, backgroundId, canvasWidth, canvasHeight, isMobile, currentPage, template.id]);
 
   // Initialize pageCustomizations from template when it loads (e.g., after restoring from draft)
   useEffect(() => {
@@ -283,8 +305,8 @@ export default function TextEditor({
     }
   };
 
-  // Handle publish
-  const handlePublish = async () => {
+  // Handle preview - prepares data and shows preview
+  const handlePreview = async () => {
     if (!fabricCanvasRef.current) return;
 
     try {
@@ -340,6 +362,86 @@ export default function TextEditor({
 
         // Collect all preview URLs - only include those that were actually edited
         // Other pages will be generated on preview page from canvas data
+        finalPreviewUrls = template.pages!.map((_, idx) => {
+          const customization = allCustomizations.get(idx);
+          return customization?.previewDataUrl || '';
+        });
+      } else {
+        // Single page
+        finalCustomizedData = currentCustomizedData;
+      }
+
+      if (onPreview) {
+        await onPreview({
+          customizedData: finalCustomizedData,
+          previewDataUrl: isMultipage ? finalPreviewUrls?.[0] : previewDataUrl,
+          previewUrls: isMultipage ? finalPreviewUrls : undefined,
+        });
+      }
+    } catch (err) {
+      console.error('Error previewing card:', err);
+      setError('Failed to preview card');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle publish - saves the card directly
+  const handlePublish = async () => {
+    if (!fabricCanvasRef.current) return;
+
+    try {
+      setIsSaving(true);
+      setError('');
+
+      // Get updated text content for current page
+      const updatedTexts = getUpdatedTextContent(textObjectsRef.current);
+
+      // Create customized data for current page
+      const currentCustomizedData = {
+        ...canvasData,
+        textElements: textElements.map((el) => ({
+          ...el,
+          text: updatedTexts.find((ut) => ut.id === el.id)?.text || el.text,
+        })),
+      };
+
+      // Export preview for current page
+      const multiplier = Math.max(2, 1 / canvasScale || 1);
+      const previewDataUrl = fabricCanvasRef.current.toDataURL({
+        format: 'png',
+        quality: 1,
+        multiplier,
+      });
+
+      // For multipage, collect all page customizations
+      let finalCustomizedData;
+      let finalPreviewUrls: string[] | undefined;
+
+      if (isMultipage) {
+        // Save current page customization first
+        const allCustomizations = new Map(pageCustomizations);
+        allCustomizations.set(currentPage, {
+          canvasData: currentCustomizedData,
+          previewDataUrl,
+        });
+
+        // Build complete multipage data structure
+        const pages = template.pages!.map((page, idx) => {
+          const customization = allCustomizations.get(idx);
+          return {
+            ...page,
+            canvasData: customization?.canvasData || page.canvasData,
+          };
+        });
+
+        finalCustomizedData = {
+          ...template.canvas_data,
+          is_multipage: true,
+          pages,
+        };
+
+        // Collect all preview URLs
         finalPreviewUrls = template.pages!.map((_, idx) => {
           const customization = allCustomizations.get(idx);
           return customization?.previewDataUrl || '';
@@ -463,7 +565,7 @@ export default function TextEditor({
       }
 
       // Download PDF
-      const fileName = `${template.name || 'card'}-${Date.now()}.pdf`;
+      const fileName = `${template.title || 'card'}-${Date.now()}.pdf`;
       pdf.save(fileName);
 
     } catch (err) {
@@ -596,28 +698,27 @@ export default function TextEditor({
 
             ):""}
 
-            {/* Publish Button - Only show on last page for multipage templates */}
+            {/* Preview and Publish Buttons - Only show on last page for multipage templates */}
             {(!isMultipage || currentPage === totalPages - 1) ? (
               <div className="mt-6 space-y-3">
+                {/* Preview Button - Always show */}
                 <button
-                  onClick={handlePublish}
+                  onClick={handlePreview}
                   disabled={isSaving || isLoading}
                   className="w-full px-4 py-3 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ background: 'linear-gradient(90deg, #d18b47, #b87435)' }}
                 >
-                  {isSaving || isLoading ? 'Preparing preview...' : 'Preview'}
+                  {isSaving || isLoading ? 'Preparing preview...' : '👁 Preview'}
                 </button>
 
-                {/* PDF Download for Multipage */}
-                {isMultipage ? (
-                  <button
-                    onClick={handleDownloadPdf}
-                    disabled={isGeneratingPdf || isSaving || isLoading}
-                    className="w-full px-4 py-3 bg-white border-2 border-[#d18b47] text-[#d18b47] font-semibold rounded-lg transition hover:bg-[#d18b47] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isGeneratingPdf ? 'Generating PDF...' : '📄 Download as PDF'}
-                  </button>
-                ):""}
+                {/* Publish Button - Only show on non-multipage or last page */}
+                <button
+                  onClick={handlePublish}
+                  disabled={isSaving || isLoading}
+                  className="w-full px-4 py-3 bg-white border-2 border-[#d18b47] text-[#d18b47] font-semibold rounded-lg transition hover:bg-[#d18b47] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSaving || isLoading ? 'Publishing...' : '✓ Publish'}
+                </button>
               </div>
             ):""}
 
@@ -682,7 +783,7 @@ export default function TextEditor({
                 <button
                   onClick={() => {
                     setShowMobileEditor(false);
-                    handlePublish();
+                    handlePreview();
                   }}
                   disabled={isSaving || isLoading}
                   className="flex-1 px-4 py-2 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"

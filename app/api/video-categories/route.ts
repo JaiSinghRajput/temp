@@ -6,7 +6,7 @@ import { slugify } from '@/lib/utils';
 export async function GET() {
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, name, slug, description, status, created_at, updated_at FROM video_categories ORDER BY created_at DESC'
+        `SELECT id, name, slug, is_active as status FROM categories WHERE parent_id IS NULL AND category_type = 'video' ORDER BY id DESC`
     );
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
@@ -26,10 +26,10 @@ export async function POST(req: NextRequest) {
 
     const slug = slugify(name.trim());
 
-    const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO video_categories (name, slug, description, status) VALUES (?, ?, ?, 1)',
-      [name.trim(), slug, description?.trim() || null]
-    );
+      const [result] = await pool.query<ResultSetHeader>(
+        "INSERT INTO categories (name, slug, category_type, is_active, parent_id) VALUES (?, ?, 'video', 1, NULL)",
+        [name.trim(), slug]
+      );
 
     return NextResponse.json({ success: true, data: { id: result.insertId, name, slug } });
   } catch (error) {

@@ -36,7 +36,22 @@ export default function AdminDashboard() {
       try {
         const res = await axiosInstance.get('/api/admin/dashboard');
         if (res.data.success) {
-          setStats(res.data.data);
+          const data = res.data.data || {};
+          setStats({
+            totalUsers: data.totalUsers ?? 0,
+            totalTemplates: data.totalEcardTemplates ?? data.totalTemplates ?? 0,
+            totalUserCards: data.totalUserContent ?? data.totalUserCards ?? 0,
+            totalEVideoTemplates: data.totalVideoTemplates ?? data.totalEVideoTemplates ?? 0,
+            totalCategories: data.totalCategories ?? 0,
+            totalVideoCategories: data.totalCategories ?? data.totalVideoCategories ?? 0,
+            eVideoRequests: data.eVideoRequests ?? { new: 0, in_progress: 0, done: 0, cancelled: 0 },
+            recentCards: data.recentContent ?? data.recentCards ?? [],
+            recentRequests: data.recentRequests ?? data.recentContent ?? [],
+            userGrowth: data.userGrowth ?? [],
+            cardsCreated: data.contentCreated ?? data.cardsCreated ?? [],
+            templateUsage: data.contentUsage ?? data.templateUsage ?? [],
+            categoryDistribution: data.categoryDistribution ?? [],
+          });
         }
       } catch (err) {
         console.error('Failed to load dashboard stats', err);
@@ -54,6 +69,8 @@ export default function AdminDashboard() {
       </div>
     );
   }
+
+  const eVideoRequests = stats?.eVideoRequests ?? { new: 0, in_progress: 0, done: 0, cancelled: 0 };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -108,10 +125,10 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h3 className="text-sm font-medium text-gray-600 mb-4">E-Video Requests</h3>
             <div className="space-y-2">
-              <RequestStatusBadge label="New" count={stats?.eVideoRequests.new || 0} color="blue" />
-              <RequestStatusBadge label="In Progress" count={stats?.eVideoRequests.in_progress || 0} color="yellow" />
-              <RequestStatusBadge label="Done" count={stats?.eVideoRequests.done || 0} color="green" />
-              <RequestStatusBadge label="Cancelled" count={stats?.eVideoRequests.cancelled || 0} color="red" />
+              <RequestStatusBadge label="New" count={eVideoRequests.new} color="blue" />
+              <RequestStatusBadge label="In Progress" count={eVideoRequests.in_progress} color="yellow" />
+              <RequestStatusBadge label="Done" count={eVideoRequests.done} color="green" />
+              <RequestStatusBadge label="Cancelled" count={eVideoRequests.cancelled} color="red" />
             </div>
           </div>
         </div>

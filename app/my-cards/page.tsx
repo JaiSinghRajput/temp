@@ -325,13 +325,20 @@ export default function MyCardsPage() {
                   <div className="p-4 space-y-2">
                     <p className="text-sm text-gray-500">Published on {card.created_at ? new Date(card.created_at).toLocaleDateString() : '—'}</p>
                     <div className="flex flex-col gap-2">
-                      {card.public_slug && (
+                      {card.public_slug ? (
                         <Link
                           href={viewHref}
-                          className="flex-1 text-center px-3 py-2 rounded-lg bg-primary text-white text-sm font-semibold"
+                          className="flex-1 text-center px-3 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primaryDark transition"
                         >
-                          View
+                          👁 View Card
                         </Link>
+                      ) : (
+                        <button
+                          disabled
+                          className="flex-1 text-center px-3 py-2 rounded-lg bg-gray-100 text-gray-400 text-sm font-semibold cursor-not-allowed"
+                        >
+                          View Not Available
+                        </button>
                       )}
                       {preview ? (
                         <button

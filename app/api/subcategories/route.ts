@@ -10,13 +10,13 @@ export async function GET(req: NextRequest) {
     let rows: RowDataPacket[];
     if (categoryId) {
       const [result] = await pool.query<RowDataPacket[]>(
-        'SELECT id, category_id, name, slug, status, created_at FROM card_subcategories WHERE category_id = ? ORDER BY name ASC',
+        "SELECT id, parent_id as category_id, name, slug, is_active as status FROM categories WHERE parent_id = ? AND category_type = 'card' ORDER BY name ASC",
         [Number(categoryId)]
       );
       rows = result;
     } else {
       const [result] = await pool.query<RowDataPacket[]>(
-        'SELECT id, category_id, name, slug, status, created_at FROM card_subcategories ORDER BY name ASC'
+        "SELECT id, parent_id as category_id, name, slug, is_active as status FROM categories WHERE parent_id IS NOT NULL AND category_type = 'card' ORDER BY name ASC"
       );
       rows = result;
     }
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     const finalSlug = slug || name.toLowerCase().replace(/\s+/g, '-');
 
     const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO card_subcategories (category_id, name, slug, status) VALUES (?, ?, ?, 1)',
+      "INSERT INTO categories (parent_id, name, slug, category_type, is_active) VALUES (?, ?, ?, 'card', 1)",
       [category_id, name.trim(), finalSlug]
     );
 

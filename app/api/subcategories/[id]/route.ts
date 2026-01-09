@@ -9,7 +9,7 @@ export async function GET(
   try {
     const { id } = await params;
     const [rows] = await pool.query<RowDataPacket[]>(
-      'SELECT id, category_id, name, slug, status, created_at FROM card_subcategories WHERE id = ?',
+      "SELECT id, parent_id as category_id, name, slug, is_active as status FROM categories WHERE id = ? AND category_type = 'card'",
       [id]
     );
 
@@ -45,7 +45,7 @@ export async function PUT(
     const finalSlug = slug || name.toLowerCase().replace(/\s+/g, '-');
 
     const [result] = await pool.query<ResultSetHeader>(
-      'UPDATE card_subcategories SET name = ?, slug = ?, status = ? WHERE id = ?',
+      "UPDATE categories SET name = ?, slug = ?, is_active = ? WHERE id = ? AND category_type = 'card'",
       [name.trim(), finalSlug, status !== undefined ? status : 1, id]
     );
 
@@ -79,7 +79,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     const [result] = await pool.query<ResultSetHeader>(
-      'DELETE FROM card_subcategories WHERE id = ?',
+      "DELETE FROM categories WHERE id = ? AND category_type = 'card'",
       [id]
     );
 

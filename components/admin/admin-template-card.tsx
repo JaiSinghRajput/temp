@@ -31,19 +31,20 @@ export function AdminTemplateCard({
     if (template.pages && template.pages.length > 0) {
       return template.pages[0].previewImageUrl || template.pages[0].imageUrl;
     }
-    if (template.template_image_url) {
-      return template.thumbnail_uri || template.template_image_url;
-    }
-    return null;
+    return template.thumbnail_url || template.template_image_url || null;
   }
+  
+  const templateName = template.title || 'Untitled';
+  const templateImage = getCardImage();
+  
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden transition hover:shadow-md w-70">
       {/* Image */}
       <div className="relative bg-gray-100 w-full">
-        {template.template_image_url ? (
+        {templateImage ? (
           <img
-            src={getCardImage()!}
-            alt={template.name}
+            src={templateImage}
+            alt={templateName}
             className="w-full h-full object-cover"
             loading="lazy"
           />
@@ -82,7 +83,7 @@ export function AdminTemplateCard({
       {/* Content */}
       <div className="p-4">
         <h3 className="text-gray-900 font-semibold text-base leading-tight line-clamp-2">
-          {template.name}
+          {templateName}
         </h3>
         {template.description &&
           <p className="text-sm text-gray-600 mt-1 line-clamp-2">
@@ -115,7 +116,7 @@ export function AdminTemplateCard({
             )}
           </div>
             {/* Price */}
-            {template?.price > 0 && (
+            {Number(template?.price ?? 0) > 0 && (
               <div className="flex justify-between gap-2">
                 <span className="font-semibold">Price</span>
                 <span>{template.price}</span>

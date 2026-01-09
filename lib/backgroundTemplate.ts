@@ -11,20 +11,17 @@ export async function updateTemplateBackground(
   try {
     // Get old background ID if exists
     const [rows]: any = await pool.query(
-      'SELECT background_id FROM templates WHERE id = ?',
+      'SELECT id FROM content_items WHERE id = ?',
       [templateId]
     );
 
-    if (rows.length > 0 && rows[0].background_id) {
-      // Release old background
-      await releaseBackground(rows[0].background_id);
+    if (rows.length > 0) {
+      // Update to new background via content_assets
+      await pool.query(
+        'UPDATE content_items SET updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [templateId]
+      );
     }
-
-    // Update to new background
-    await pool.query(
-      'UPDATE templates SET background_id = ? WHERE id = ?',
-      [backgroundId, templateId]
-    );
   } catch (error) {
     console.error('Error updating template background:', error);
     throw error;
@@ -41,7 +38,7 @@ export async function addTemplatePage(
 ): Promise<any> {
   try {
     const [rows]: any = await pool.query(
-      'SELECT pages, is_multipage FROM templates WHERE id = ?',
+      'SELECT canvas_schema FROM ecard_templates WHERE content_id = ?',
       [templateId]
     );
 
@@ -49,24 +46,18 @@ export async function addTemplatePage(
       throw new Error('Template not found');
     }
 
-    let pages = [];
-    if (rows[0].pages) {
-      pages = JSON.parse(rows[0].pages);
+    let canvasSchema = {};
+    if (rows[0].canvas_schema) {
+      canvasSchema = JSON.parse(rows[0].canvas_schema);
     }
 
-    // Add new page
-    pages.push({
-      backgroundId,
-      canvasData,
-    });
-
-    // Update template
+    // Update template with canvas data
     await pool.query(
-      'UPDATE templates SET pages = ?, is_multipage = ? WHERE id = ?',
-      [JSON.stringify(pages), true, templateId]
+      'UPDATE ecard_templates SET canvas_schema = ? WHERE content_id = ?',
+      [JSON.stringify(canvasData || canvasSchema), templateId]
     );
 
-    return pages;
+    return canvasData;
   } catch (error) {
     console.error('Error adding template page:', error);
     throw error;
@@ -81,10 +72,12 @@ export async function getTemplateWithBackgrounds(
 ): Promise<any> {
   try {
     const [rows]: any = await pool.query(
-      `SELECT t.*, b.cloudinary_url as background_url
-       FROM templates t
-       LEFT JOIN backgrounds b ON t.background_id = b.id
-       WHERE t.id = ?`,
+      `SELECT ci.*, et.canvas_schema, et.is_multipage, 
+              ca.cloudinary_url, ca.url as thumbnail_url
+       FROM content_items ci
+       LEFT JOIN ecard_templates et ON et.content_id = ci.id
+       LEFT JOIN content_assets ca ON ca.content_id = ci.id AND ca.asset_type = 'image'
+       WHERE ci.id = ? AND ci.type = 'ecard'`,
       [templateId]
     );
 
@@ -95,35 +88,12 @@ export async function getTemplateWithBackgrounds(
     const template = rows[0];
 
     // Resolve background for main canvas
-    let templateImageUrl = template.template_image_url;
-    if (template.background_id && template.background_url) {
-      templateImageUrl = template.background_url;
-    }
-
-    // Resolve backgrounds for multipage
-    let pages = [];
-    if (template.pages) {
-      pages = JSON.parse(template.pages);
-
-      // Fetch background URLs for each page
-      for (const page of pages) {
-        if (page.backgroundId) {
-          const [bgRows]: any = await pool.query(
-            'SELECT cloudinary_url FROM backgrounds WHERE id = ?',
-            [page.backgroundId]
-          );
-
-          if (bgRows.length > 0) {
-            page.imageUrl = bgRows[0].cloudinary_url;
-          }
-        }
-      }
-    }
+    let templateImageUrl = template.thumbnail_url || template.cloudinary_url;
 
     return {
       ...template,
+      canvas_schema: template.canvas_schema ? JSON.parse(template.canvas_schema) : {},
       template_image_url: templateImageUrl,
-      pages,
     };
   } catch (error) {
     console.error('Error fetching template with backgrounds:', error);
@@ -139,26 +109,17 @@ export async function cleanupTemplateBackgrounds(
 ): Promise<void> {
   try {
     const [rows]: any = await pool.query(
-      'SELECT background_id, pages FROM templates WHERE id = ?',
-      [templateId]
+      'SELECT id FROM content_items WHERE id = ? AND type = ?',
+      [templateId, 'ecard']
     );
 
     if (rows.length === 0) return;
 
-    // Release main background
-    if (rows[0].background_id) {
-      await releaseBackground(rows[0].background_id, true);
-    }
-
-    // Release page backgrounds
-    if (rows[0].pages) {
-      const pages = JSON.parse(rows[0].pages);
-      for (const page of pages) {
-        if (page.backgroundId) {
-          await releaseBackground(page.backgroundId, true);
-        }
-      }
-    }
+    // Clean up content_assets
+    await pool.query(
+      'DELETE FROM content_assets WHERE content_id = ?',
+      [templateId]
+    );
   } catch (error) {
     console.error('Error cleaning up template backgrounds:', error);
     throw error;

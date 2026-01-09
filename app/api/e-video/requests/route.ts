@@ -15,8 +15,8 @@ const safeParse = <T>(value: any, fallback: T): T => {
 
 export async function GET(request: NextRequest) {
   try {
+    const id = request.nextUrl.searchParams.get('id');
     const status = request.nextUrl.searchParams.get('status');
-    const paymentStatus = request.nextUrl.searchParams.get('paymentStatus');
     const templateId = request.nextUrl.searchParams.get('templateId');
     const cardId = request.nextUrl.searchParams.get('cardId');
     const userId = request.nextUrl.searchParams.get('userId');
@@ -26,28 +26,30 @@ export async function GET(request: NextRequest) {
     const filters: string[] = [];
     const params: (string | number)[] = [];
 
+    if (id) {
+      filters.push('ucc.id = ?');
+      params.push(Number(id));
+    }
+
     if (status) {
-      filters.push('r.status = ?');
+      filters.push('ucc.status = ?');
       params.push(status);
     }
 
-    if (paymentStatus && ['pending', 'paid'].includes(paymentStatus)) {
-      filters.push('r.payment_status = ?');
-      params.push(paymentStatus);
-    }
+    // paymentStatus filter skipped because user_custom_content does not store payment_status
 
     if (templateId) {
-      filters.push('r.template_id = ?');
+      filters.push('ucc.content_id = ?');
       params.push(Number(templateId));
     }
 
     if (cardId) {
-      filters.push('r.card_id = ?');
+      filters.push('ucc.id = ?');
       params.push(Number(cardId));
     }
 
     if (userId) {
-      filters.push('r.user_id = ?');
+      filters.push('ucc.user_id = ?');
       params.push(userId);
     }
 
@@ -60,7 +62,7 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      filters.push('DATE(r.created_at) >= ?');
+      filters.push('DATE(ucc.created_at) >= ?');
       params.push(dateFrom);
     }
 
@@ -71,34 +73,58 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      filters.push('DATE(r.created_at) <= ?');
+      filters.push('DATE(ucc.created_at) <= ?');
       params.push(dateTo);
     }
 
     const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
 
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT r.*, t.title AS template_title, t.slug AS template_slug, t.price AS template_price,
-              CASE WHEN t.price IS NULL OR t.price = 0 THEN 'free' ELSE 'premium' END AS template_pricing_type,
-              c.card_image_url
-       FROM e_video_requests r
-       JOIN e_video_templates t ON t.id = r.template_id
-       LEFT JOIN e_video_cards c ON c.id = r.card_id
+      `SELECT 
+         ucc.id,
+         ucc.content_id,
+         ucc.user_id,
+         ucc.custom_data,
+         ucc.preview_url,
+         ucc.status,
+         ucc.created_at,
+         MAX(ci.title) AS template_title, 
+         MAX(ci.slug) AS template_slug, 
+         MAX(p.price) AS template_price,
+         GROUP_CONCAT(DISTINCT c_main.slug) AS template_category_slug,
+         GROUP_CONCAT(DISTINCT c_sub.slug) AS template_subcategory_slug
+       FROM user_custom_content ucc
+       JOIN content_items ci ON ci.id = ucc.content_id AND ci.type = 'video'
+       LEFT JOIN video_templates vt ON vt.content_id = ci.id
+       LEFT JOIN products p ON p.content_id = ci.id
+       LEFT JOIN category_links cl_main ON cl_main.target_id = ci.id AND cl_main.target_type = 'content'
+       LEFT JOIN categories c_main ON c_main.id = cl_main.category_id AND c_main.parent_id IS NULL
+       LEFT JOIN category_links cl_sub ON cl_sub.target_id = ci.id AND cl_sub.target_type = 'content'
+       LEFT JOIN categories c_sub ON c_sub.id = cl_sub.category_id AND c_sub.parent_id IS NOT NULL
        ${whereClause}
-       ORDER BY r.created_at DESC`,
+       GROUP BY ucc.id
+       ORDER BY ucc.created_at DESC`,
       params
     );
 
-    const data = rows.map((row) => ({
-      ...(row as any),
-      payload: safeParse<Record<string, any>>((row as any).payload, {}),
-    }));
+    const data = rows.map((row) => {
+      const price = (row as any).template_price;
+      const parsedPrice = price !== null && price !== undefined ? Number(price) : null;
+      return {
+        ...(row as any),
+        template_price: parsedPrice,
+        template_pricing_type: parsedPrice && parsedPrice > 0 ? 'premium' : 'free',
+        template_category_slug: (row as any).template_category_slug || null,
+        template_subcategory_slug: (row as any).template_subcategory_slug || null,
+        payload: safeParse<Record<string, any>>((row as any).custom_data, {}),
+      };
+    });
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
-    console.error('Error fetching e-video requests:', error);
+    console.error('Error fetching video requests:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch e-video requests' },
+      { success: false, error: 'Failed to fetch video requests' },
       { status: 500 }
     );
   }
@@ -127,8 +153,8 @@ export async function POST(request: NextRequest) {
       status?: string;
     };
 
-    const allowedStatuses = ['new', 'in_progress', 'done', 'cancelled', 'draft'];
-    const finalStatus = status && allowedStatuses.includes(status) ? status : 'new';
+    const allowedStatuses = ['draft', 'submitted', 'paid', 'completed'];
+    const finalStatus = status && allowedStatuses.includes(status) ? status : 'draft';
 
     console.log('📥 [POST /api/e-video/requests] Received:', {
       template_id,
@@ -147,29 +173,15 @@ export async function POST(request: NextRequest) {
     }
 
     const [templateRows] = await pool.query<RowDataPacket[]>(
-      'SELECT id FROM e_video_templates WHERE id = ? LIMIT 1',
-      [template_id]
+      'SELECT id FROM content_items WHERE id = ? AND type = ? LIMIT 1',
+      [template_id, 'video']
     );
 
     if (templateRows.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'Template not found' },
+        { success: false, error: 'Video template not found' },
         { status: 404 }
       );
-    }
-
-    if (card_id) {
-      const [cardRows] = await pool.query<RowDataPacket[]>(
-        'SELECT id FROM e_video_cards WHERE id = ? AND template_id = ? LIMIT 1',
-        [card_id, template_id]
-      );
-
-      if (cardRows.length === 0) {
-        return NextResponse.json(
-          { success: false, error: 'Card not found for template' },
-          { status: 404 }
-        );
-      }
     }
 
     // Check if user_id exists in users table (to satisfy foreign key constraint)
@@ -185,17 +197,18 @@ export async function POST(request: NextRequest) {
     }
 
     const [result] = await pool.query<ResultSetHeader>(
-      `INSERT INTO e_video_requests
-        (template_id, card_id, user_id, requester_name, requester_email, requester_phone, payload, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)` ,
+      `INSERT INTO user_custom_content
+        (content_id, user_id, custom_data, status)
+       VALUES (?, ?, ?, ?)` ,
       [
         template_id,
-        card_id ?? null,
         validUserId,
-        requester_name,
-        requester_email || null,
-        requester_phone || null,
-        JSON.stringify(payload),
+        JSON.stringify({
+          ...payload,
+          requester_name,
+          requester_email: requester_email || null,
+          requester_phone: requester_phone || null,
+        }),
         finalStatus,
       ]
     );
@@ -211,7 +224,7 @@ export async function POST(request: NextRequest) {
         requester_email: requester_email || null,
         requester_phone: requester_phone || null,
         payload,
-        status: 'new',
+        status: finalStatus,
       },
     });
   } catch (error) {
@@ -226,21 +239,31 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, status, admin_notes } = body as {
+    const {
+      id,
+      status,
+      payload,
+      requester_name,
+      requester_email,
+      requester_phone,
+    } = body as {
       id?: number;
-      status?: 'new' | 'in_progress' | 'done' | 'cancelled';
-      admin_notes?: string | null;
+      status?: 'draft' | 'submitted' | 'paid' | 'completed' | 'cancelled';
+      payload?: Record<string, any>;
+      requester_name?: string;
+      requester_email?: string | null;
+      requester_phone?: string | null;
     };
 
-    if (!id || !status) {
+    if (!id) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: id, status' },
+        { success: false, error: 'Missing required field: id' },
         { status: 400 }
       );
     }
 
     const [existing] = await pool.query<RowDataPacket[]>(
-      'SELECT id FROM e_video_requests WHERE id = ? LIMIT 1',
+      'SELECT id FROM user_custom_content WHERE id = ? LIMIT 1',
       [id]
     );
 
@@ -248,12 +271,40 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Request not found' }, { status: 404 });
     }
 
-    await pool.query<ResultSetHeader>(
-      `UPDATE e_video_requests
-       SET status = ?, admin_notes = ?
-       WHERE id = ?` ,
-      [status, admin_notes ?? null, id]
-    );
+    const nextStatus = status ?? 'draft';
+
+    if (!['draft', 'submitted', 'paid', 'completed', 'cancelled'].includes(nextStatus)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid status' },
+        { status: 400 }
+      );
+    }
+
+    // If payload provided, overwrite custom_data with merged requester info
+    if (payload) {
+      await pool.query<ResultSetHeader>(
+        `UPDATE user_custom_content
+         SET status = ?, custom_data = ?
+         WHERE id = ?` ,
+        [
+          nextStatus,
+          JSON.stringify({
+            ...payload,
+            requester_name,
+            requester_email: requester_email ?? null,
+            requester_phone: requester_phone ?? null,
+          }),
+          id,
+        ]
+      );
+    } else {
+      await pool.query<ResultSetHeader>(
+        `UPDATE user_custom_content
+         SET status = ?
+         WHERE id = ?` ,
+        [nextStatus, id]
+      );
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

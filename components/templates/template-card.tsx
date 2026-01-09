@@ -11,7 +11,8 @@ type TemplateCardProps = {
 
 export function TemplateCard({ template, onSelect }: TemplateCardProps) {
   const imageUrl =
-    template.thumbnail_uri ||
+    template.pages?.[0]?.previewImageUrl ||
+    template.thumbnail_url ||
     template.template_image_url ||
     template.pages?.[0]?.imageUrl ||
     '/images/template.png';
@@ -35,7 +36,7 @@ export function TemplateCard({ template, onSelect }: TemplateCardProps) {
       <div className="relative aspect-3/4 bg-gray-100 z-0">
         <Image
           src={imageUrl}
-          alt={template.name}
+          alt={template.title}
           fill
           sizes="(min-width:1024px) 25vw, (min-width:768px) 33vw, 100vw"
           className="object-cover transition-transform duration-500 group-hover:scale-105"
@@ -61,7 +62,7 @@ export function TemplateCard({ template, onSelect }: TemplateCardProps) {
       {/* Minimal Info */}
       <div className="px-3 py-2">
         <h3 className="text-sm font-medium text-gray-800 truncate">
-          {template.name}
+          {template.title}
         </h3>
       </div>
     </div>

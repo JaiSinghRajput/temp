@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { slugify } from '@/lib/utils';
 
-// GET all colors
+// GET all colors (stored as content_assets)
 export async function GET() {
   try {
     const [colors] = await pool.query<RowDataPacket[]>(
-      'SELECT id, name, hex_code FROM color ORDER BY id'
+      `SELECT 
+         id, 
+         url AS hex_code,
+         JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.name')) AS name
+       FROM content_assets 
+       WHERE asset_type = 'color' 
+       ORDER BY id`
     );
     return NextResponse.json({
       success: true,
-      data: colors,
+      data: colors || [],
     });
   } catch (error: any) {
     console.error('Error fetching colors:', error);
@@ -41,22 +48,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO color (name, hex_code) VALUES (?, ?)',
-      [name, hex_code]
-    );
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
 
-    return NextResponse.json(
-      {
-        success: true,
-        data: {
-          id: result.insertId,
-          name,
-          hex_code,
+      const title = name.trim();
+      const slug = slugify(title);
+
+      const [contentResult] = await conn.query<ResultSetHeader>(
+        `INSERT INTO content_items (type, title, slug, description, is_active) VALUES ('ecard', ?, ?, NULL, TRUE)`,
+        [title, slug]
+      );
+
+      const contentId = contentResult.insertId;
+
+      const [result] = await conn.query<ResultSetHeader>(
+        `INSERT INTO content_assets (content_id, asset_type, url, metadata) VALUES (?, 'color', ?, JSON_OBJECT('name', ?))`,
+        [contentId, hex_code, title]
+      );
+
+      await conn.commit();
+
+      return NextResponse.json(
+        {
+          success: true,
+          data: {
+            id: result.insertId,
+            name: title,
+            hex_code,
+          },
         },
-      },
-      { status: 201 }
-    );
+        { status: 201 }
+      );
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
   } catch (error: any) {
     if (error.code === 'ER_DUP_ENTRY') {
       return NextResponse.json(

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Canvas, Textbox } from 'fabric';
 import { TextElement, UserEcard } from '@/lib/types';
-import { loadTextOnlyCanvas } from '@/lib/text-only-canvas-renderer';
+import { loadTextOnlyCanvas, loadFontsFromElements } from '@/lib/text-only-canvas-renderer';
 import { useCanvasTextAnimation } from '@/hooks/useCanvasTextAnimation';
 import { useAuth } from '@/contexts/AuthContext';
 import jsPDF from 'jspdf';
@@ -97,37 +97,44 @@ export default function ShareCard({ card }: ShareCardProps) {
 
     fabricCanvasRef.current = canvas;
 
-    loadTextOnlyCanvas({
-      canvas,
-      imageUrl: backgroundUrl,
-      backgroundId,
-      textElements,
-      canvasWidth,
-      canvasHeight,
-      scale,
-      customFonts: currentCanvasData?.customFonts,
-    })
-      .then(({ textObjects }) => {
-        textObjects.forEach((textbox) => {
-          textbox.set({ selectable: false, editable: false, evented: false, hoverCursor: 'default' });
-        });
-        canvas.selection = false;
-        canvas.renderAll();
-        textObjectsRef.current = textObjects;
-        setCanvasScale(scale);
-        
-        // Set canvas for animations
-        setCanvas(canvas);
-        
-        // Animate shared card with typewriter effect for a nice reveal
-        const textboxArray = Array.from(textObjects.values());
-        if (textboxArray.length > 0) {
-          animateAllTexts(textboxArray, 'slideInTop', 1000, 150);
-        }
-      })
+    // Load fonts used by the card (works for both stored customFonts and CDN lookups)
+    loadFontsFromElements(textElements, currentCanvasData?.customFonts)
       .catch((err) => {
-        console.error('Error loading shared card canvas:', err);
-        setError('Unable to render shared card. Showing preview image instead.');
+        console.warn('[ShareCard] Font preload failed, continuing anyway:', err);
+      })
+      .finally(() => {
+        loadTextOnlyCanvas({
+          canvas,
+          imageUrl: backgroundUrl,
+          backgroundId,
+          textElements,
+          canvasWidth,
+          canvasHeight,
+          scale,
+          customFonts: currentCanvasData?.customFonts,
+        })
+          .then(({ textObjects }) => {
+            textObjects.forEach((textbox) => {
+              textbox.set({ selectable: false, editable: false, evented: false, hoverCursor: 'default' });
+            });
+            canvas.selection = false;
+            canvas.renderAll();
+            textObjectsRef.current = textObjects;
+            setCanvasScale(scale);
+            
+            // Set canvas for animations
+            setCanvas(canvas);
+            
+            // Animate shared card with typewriter effect for a nice reveal
+            const textboxArray = Array.from(textObjects.values());
+            if (textboxArray.length > 0) {
+              animateAllTexts(textboxArray, 'slideInTop', 1000, 150);
+            }
+          })
+          .catch((err) => {
+            console.error('Error loading shared card canvas:', err);
+            setError('Unable to render shared card. Showing preview image instead.');
+          });
       });
 
     return () => {
@@ -295,18 +302,21 @@ export default function ShareCard({ card }: ShareCardProps) {
         </div>
       )}
       
-      {/* Download Buttons - Only visible to card owner */}
+      {/* Download actions – only for owner */}
       {isOwner && (
-        <div className="mt-4 flex gap-3">
-          <button
-            onClick={() => {
-              const preview = card.preview_url || parsedPreviewUrls[0];
-              if (preview) window.open(preview, '_blank', 'noopener');
-            }}
-            className="flex-1 px-4 py-2 bg-gray-100 text-gray-800 rounded-lg font-semibold hover:bg-gray-200 transition"
-          >
-            Download Image
-          </button>
+        <div className="mt-4 flex gap-3 px-4 pb-4">
+          {!isMultipage && (
+            <button
+              onClick={() => {
+                const preview = card.preview_url || parsedPreviewUrls[0];
+                if (preview) window.open(preview, '_blank', 'noopener');
+              }}
+              className="flex-1 px-4 py-2 bg-gray-100 text-gray-800 rounded-lg font-semibold hover:bg-gray-200 transition"
+            >
+              Download Image
+            </button>
+          )}
+
           {isMultipage && (
             <button
               onClick={handleDownloadPdf}

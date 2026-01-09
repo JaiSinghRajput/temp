@@ -50,6 +50,7 @@ async function resolveBackgroundUrl(
 export async function loadCustomFonts(fonts?: Array<{ name: string; url: string }>) {
   if (!fonts || fonts.length === 0) return;
 
+  // First, add all font links to the document
   for (const font of fonts) {
     const id = `font-${font.name.replace(/\s+/g, '-').toLowerCase()}`;
     if (!document.getElementById(id)) {
@@ -58,14 +59,51 @@ export async function loadCustomFonts(fonts?: Array<{ name: string; url: string 
       link.rel = 'stylesheet';
       link.href = font.url;
       document.head.appendChild(link);
-      
+    }
+  }
+
+  // Wait a bit for stylesheets to be processed
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  // Try to load each font explicitly
+  for (const font of fonts) {
+    let loaded = false;
+    let retries = 0;
+    const maxRetries = 3;
+
+    while (!loaded && retries < maxRetries) {
       try {
-        await document.fonts.load(`16px "${font.name}"`);
+        // Try to load the font
+        await document.fonts.load(`400 16px "${font.name}"`);
+        await document.fonts.load(`700 16px "${font.name}"`);
+        loaded = true;
+        console.log(`[Font Loader] Successfully loaded: ${font.name}`);
       } catch (err) {
+        retries++;
+        console.warn(
+          `[Font Loader] Attempt ${retries}/${maxRetries} failed for ${font.name}:`,
+          err instanceof Error ? err.message : String(err)
+        );
+        if (retries < maxRetries) {
+          // Wait before retrying
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
       }
     }
   }
-  await document.fonts.ready;
+
+  // Wait for all fonts to be ready
+  try {
+    await Promise.race([
+      document.fonts.ready,
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Font loading timeout')), 5000)
+      )
+    ]);
+    console.log('[Font Loader] All fonts ready');
+  } catch (err) {
+    console.warn('[Font Loader] Font ready timeout, continuing anyway:', err);
+  }
 }
 
 /**

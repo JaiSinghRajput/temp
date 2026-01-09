@@ -92,29 +92,24 @@ export default function ECardHomePage() {
                 );
 
                 if (categoryMatch) {
+                    // Category list
                     setViewMode('list');
                     setTemplateDetail(null);
                     setActiveCategory(parts[0]);
                     setActiveSubcategory(undefined);
                     loadTemplates(categoryMatch.id, undefined, categories, subcategories);
-                } else {
-                    // Show list view filtered by category slug even if category doesn't exist in DB
-                    setViewMode('list');
-                    setTemplateDetail(null);
-                    setActiveCategory(parts[0]);
+                } else if (parts[0].startsWith('card-')) {
+                    // Published card via public_slug
+                    setViewMode('published');
+                    setActiveCategory(undefined);
                     setActiveSubcategory(undefined);
-                    setCategories(categories.map((cat: any) => ({
-                        ...cat,
-                        slug: cat.slug || slugify(cat.name || ''),
-                        subcategories: (subcategories || [])
-                            .filter((sub: any) => sub.category_id === cat.id)
-                            .map((sub: any) => ({
-                                ...sub,
-                                slug: sub.slug || slugify(sub.name || ''),
-                            })),
-                    })));
-                    loadTemplates(undefined, undefined, categories, subcategories);
-                    setLoading(false);
+                    fetchPublishedCard(parts[0]);
+                } else {
+                    // Template detail
+                    setViewMode('detail');
+                    setActiveCategory(undefined);
+                    setActiveSubcategory(undefined);
+                    await fetchTemplateDetail(parts[0]);
                 }
             } else if (parts.length === 2) {
                 const categoryMatch = categories.find((c: any) => 
@@ -130,6 +125,18 @@ export default function ECardHomePage() {
                     setActiveCategory(parts[0]);
                     setActiveSubcategory(parts[1]);
                     loadTemplates(categoryMatch.id, subcategoryMatch.id, categories, subcategories);
+                } else if (parts[1].startsWith('card-')) {
+                    // It's a published card (public_slug format)
+                    setViewMode('published');
+                    setActiveCategory(undefined);
+                    setActiveSubcategory(undefined);
+                    fetchPublishedCard(parts[1]);
+                } else if (categoryMatch) {
+                    // Treat second part as template slug within the category
+                    setViewMode('detail');
+                    setActiveCategory(undefined);
+                    setActiveSubcategory(undefined);
+                    await fetchTemplateDetail(parts[1], categoryMatch, undefined);
                 } else {
                     setError('Category or subcategory not found');
                     setTemplates([]);
@@ -144,7 +151,10 @@ export default function ECardHomePage() {
                 );
 
                 // Check if it's a published card or template detail
-                if (hasNumericSuffix(parts[2])) {
+                    // Published cards have public_slug format: card-{timestamp}-{random}
+                    const isPublishedCard = parts[2].startsWith('card-');
+                
+                    if (isPublishedCard) {
                     // Published card - validate category/subcategory
                     if (categoryMatch && subcategoryMatch && subcategoryMatch.category_id === categoryMatch.id) {
                         setViewMode('published');
@@ -230,20 +240,21 @@ export default function ECardHomePage() {
             const res = await fetch('/api/templates');
             const json = await res.json();
             if (json.success && Array.isArray(json.data)) {
-                const template = json.data.find((t: Template) => 
-                    slugify(t.name || '') === normalizedSlug
-                );
+                const template = json.data.find((t: Template) => {
+                    const tSlug = (t as any).slug || '';
+                    return tSlug === slug || tSlug === normalizedSlug || stripNumericSuffix(tSlug) === normalizedSlug;
+                });
                 if (template) {
                     // If category/subcategory provided in URL, validate they match the template
                     if (categoryMatch && subcategoryMatch) {
-                        const categoryMatches = template.category_id === categoryMatch.id;
-                        const subcategoryMatches = template.subcategory_id === subcategoryMatch.id;
+                        const categoryMatches = template.category_slug === categoryMatch.slug;
+                        const subcategoryMatches = template.subcategory_slug === subcategoryMatch.slug;
                         
                         if (!categoryMatches || !subcategoryMatches) {
                             // Template exists but path doesn't match - redirect to correct path
-                            const correctCategorySlug = template.category_name ? slugify(template.category_name) : 'uncategorized';
-                            const correctSubcategorySlug = template.subcategory_name ? slugify(template.subcategory_name) : 'general';
-                            const correctTemplateSlug = slugify(template.name || '');
+                            const correctCategorySlug = template.category_slug || (template.category_name ? slugify(template.category_name) : 'uncategorized');
+                            const correctSubcategorySlug = template.subcategory_slug || (template.subcategory_name ? slugify(template.subcategory_name) : 'general');
+                            const correctTemplateSlug = (template as any).slug || slugify(template.title || '');
                             router.push(`/e-card/${correctCategorySlug}/${correctSubcategorySlug}/${correctTemplateSlug}`);
                             return;
                         }
@@ -314,8 +325,8 @@ export default function ECardHomePage() {
 
     const filteredTemplates = templates.filter((t) => {
         const matchesColor = colorFilter === 'all' || (t as any).color === colorFilter;
-        const matchesCategory = !activeCategoryId || (t as any).category_id === activeCategoryId;
-        const matchesSubcategory = !activeSubcategoryId || (t as any).subcategory_id === activeSubcategoryId;
+        const matchesCategory = !activeCategoryId || (t as any).category_id === Number(activeCategoryId);
+        const matchesSubcategory = !activeSubcategoryId || (t as any).subcategory_id === Number(activeSubcategoryId);
         return matchesColor && matchesCategory && matchesSubcategory;
     });
 
@@ -373,8 +384,8 @@ export default function ECardHomePage() {
         return (
             <main className="min-h-screen bg-[#f7f4ef]">
                 <PageHeader
-                    title={templateDetail?.name || 'E-Card'}
-                    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'E-Card', href: '/e-card' }, { label: templateDetail?.name || 'Preview' }]}
+                    title={templateDetail?.title || 'E-Card'}
+                    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'E-Card', href: '/e-card' }, { label: templateDetail?.title || 'Preview' }]}
                 />
 
                 <div className="max-w-xl mx-auto px-6 py-10">

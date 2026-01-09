@@ -6,11 +6,11 @@ import { slugify } from '@/lib/utils';
 export async function GET(req: NextRequest) {
   try {
     const categoryId = req.nextUrl.searchParams.get('category_id');
-    const where = categoryId ? 'WHERE category_id = ?' : '';
+    const where = categoryId ? "WHERE parent_id = ? AND category_type = 'video'" : "WHERE parent_id IS NOT NULL AND category_type = 'video'";
     const params = categoryId ? [categoryId] : [];
 
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT id, category_id, name, slug, status, created_at, updated_at FROM video_subcategories ${where} ORDER BY created_at DESC`,
+      `SELECT id, parent_id as category_id, name, slug, is_active as status FROM categories ${where} ORDER BY id DESC`,
       params
     );
     return NextResponse.json({ success: true, data: rows });
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     const finalSlug = slug ? slugify(slug) : slugify(name);
 
     const [result] = await pool.query<ResultSetHeader>(
-      'INSERT INTO video_subcategories (category_id, name, slug, status) VALUES (?, ?, ?, 1)',
+      "INSERT INTO categories (parent_id, name, slug, category_type, is_active) VALUES (?, ?, ?, 'video', 1)",
       [category_id, name.trim(), finalSlug]
     );
 

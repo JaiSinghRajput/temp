@@ -113,9 +113,9 @@ export function ListView({
                   <TemplateCard
                     template={template}
                     onSelect={(id) => {
-                      const cardSlug = slugify(template.name || '');
-                      const catSlug = template.category_name ? slugify(template.category_name) : '';
-                      const subcatSlug = template.subcategory_name ? slugify(template.subcategory_name) : '';
+                      const cardSlug = (template as any).slug || slugify(template.title || '');
+                      const catSlug = template.category_slug || (template.category_name ? slugify(template.category_name) : '');
+                      const subcatSlug = template.subcategory_slug || (template.subcategory_name ? slugify(template.subcategory_name) : '');
                       const path = catSlug && subcatSlug
                         ? `/e-card/${catSlug}/${subcatSlug}/${cardSlug}`
                         : catSlug

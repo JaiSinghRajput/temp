@@ -88,25 +88,10 @@ export default function VideoCatalog() {
         setCategories(shaped);
       }
 
-      const activeCategoryId = catsJson.success
-        ? catsJson.data.find(
-            (c: any) =>
-              (c.slug || slugify(c.name || "")) === categorySlug
-          )?.id
-        : undefined;
-
-      const activeSubcategoryId =
-        subsJson.success && Array.isArray(subsJson.data)
-          ? subsJson.data.find(
-              (s: any) =>
-                (s.slug || slugify(s.name || "")) === subcategorySlug
-            )?.id
-          : undefined;
-
+      // Build query parameters using slug values
       const qs = new URLSearchParams();
-      if (activeCategoryId) qs.append("category_id", String(activeCategoryId));
-      if (activeSubcategoryId)
-        qs.append("subcategory_id", String(activeSubcategoryId));
+      if (categorySlug) qs.append("category_slug", categorySlug);
+      if (subcategorySlug) qs.append("subcategory_slug", subcategorySlug);
 
       const url = qs.toString()
         ? `/api/e-video/templates?${qs.toString()}`

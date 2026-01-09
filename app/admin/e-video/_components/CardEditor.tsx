@@ -26,6 +26,7 @@ export function CardEditor({
         onChange={(url, pid) =>
           onUpdate({ card_image_url: url, card_image_public_id: pid })
         }
+        className="h-40"
       />
 
       <div>
