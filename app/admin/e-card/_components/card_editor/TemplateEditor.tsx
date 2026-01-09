@@ -40,12 +40,15 @@ interface TemplateEditorProps {
 const CoordinateUtils = {
   absoluteToRelative: (position: any, originalWidth: number, originalHeight: number) => {
     if (!originalWidth || !originalHeight) return position;
+    
+    // Store both absolute and relative coordinates for better compatibility
     return {
       ...position,
       leftPercent: (position.left / originalWidth) * 100,
       topPercent: (position.top / originalHeight) * 100,
       widthPercent: (position.width / originalWidth) * 100,
-      fontSizeRatio: position.fontSize ? position.fontSize / position.width : undefined,
+      heightPercent: position.height ? (position.height / originalHeight) * 100 : undefined,
+      fontSizeRatio: position.fontSize && position.width ? position.fontSize / position.width : undefined,
     };
   },
 
@@ -54,8 +57,11 @@ const CoordinateUtils = {
 
     if (hasRelative) {
       const newWidth = (position.widthPercent / 100) * canvasWidth;
+      const newHeight = position.heightPercent ? (position.heightPercent / 100) * canvasHeight : undefined;
+      
+      // Calculate font size maintaining the ratio to width
       const newFontSize = position.fontSizeRatio
-        ? Math.max(8, newWidth * position.fontSizeRatio)
+        ? Math.max(8, Math.round(newWidth * position.fontSizeRatio))
         : position.fontSize;
 
       return {
@@ -63,11 +69,26 @@ const CoordinateUtils = {
         left: (position.leftPercent / 100) * canvasWidth,
         top: (position.topPercent / 100) * canvasHeight,
         width: newWidth,
+        height: newHeight,
         fontSize: newFontSize,
       };
     }
 
-    // Old format - use as-is
+    // Old format - scale proportionally if canvas size changed
+    if (position.canvasWidth && position.canvasHeight) {
+      const scaleX = canvasWidth / position.canvasWidth;
+      const scaleY = canvasHeight / position.canvasHeight;
+      
+      return {
+        ...position,
+        left: position.left * scaleX,
+        top: position.top * scaleY,
+        width: position.width * scaleX,
+        fontSize: position.fontSize ? Math.max(8, Math.round(position.fontSize * scaleX)) : position.fontSize,
+      };
+    }
+
+    // Fallback - use as-is
     return position;
   },
 
@@ -231,9 +252,16 @@ const TextElementUtils = {
     return objects.filter(o => o instanceof Textbox).map((obj, i) => {
       const t = obj as Textbox;
       t.setCoords();
-
+      
+      const textboxWidth = t.width || 250;
+      
       const position = CoordinateUtils.absoluteToRelative(
-        { left: t.left, top: t.top, width: t.width },
+        { 
+          left: t.left, 
+          top: t.top, 
+          width: textboxWidth,
+          fontSize: t.fontSize
+        },
         canvasWidth,
         canvasHeight
       );
@@ -242,8 +270,8 @@ const TextElementUtils = {
         id: String(i + 1),
         text: t.text,
         label: `Text Field ${i + 1}`,
-        left: position.left,
-        top: position.top,
+        left: t.left,
+        top: t.top,
         leftPercent: position.leftPercent,
         topPercent: position.topPercent,
         fontSize: t.fontSize,
@@ -251,10 +279,10 @@ const TextElementUtils = {
         fontWeight: t.fontWeight,
         fontFamily: t.fontFamily,
         fill: t.fill,
-        width: position.width,
+        width: textboxWidth,
         widthPercent: position.widthPercent,
-        scaleX: t.scaleX ?? 1,
-        scaleY: t.scaleY ?? 1,
+        scaleX: 1,
+        scaleY: 1,
         textAlign: t.textAlign,
         angle: t.angle || 0,
         locked: (t as any).isLocked || false,
@@ -274,14 +302,14 @@ const TextElementUtils = {
     const tb = new Textbox(textData.text || '', {
       left: scaledPosition.left,
       top: scaledPosition.top,
-      fontSize: scaledPosition.fontSize || textData.fontSize,
-      fontFamily: textData.fontFamily,
+      fontSize: scaledPosition.fontSize || textData.fontSize || 40,
+      fontFamily: textData.fontFamily || 'Arial',
       fontWeight: textData.fontWeight || 'normal',
-      fill: textData.fill,
-      width: scaledPosition.width,
-      scaleX: textData.scaleX ?? 1,
-      scaleY: textData.scaleY ?? 1,
-      textAlign: textData.textAlign,
+      fill: textData.fill || '#000000',
+      width: scaledPosition.width || 250,
+      scaleX: 1,
+      scaleY: 1,
+      textAlign: textData.textAlign || 'center',
       angle: textData.angle || 0,
       originX: 'center',
       originY: 'center',
@@ -1004,22 +1032,23 @@ export default function TemplateEditor({
 
     const textElements = objects.filter((obj) => obj instanceof Textbox).map((obj, i) => {
       const textbox = obj as Textbox;
-      // Force coordinate calculation to ensure positions are accurate
       textbox.setCoords();
 
-      // Convert to relative coordinates
-      const position = absoluteToRelative({
+      const textboxWidth = textbox.width || 250;
+
+      const position = CoordinateUtils.absoluteToRelative({
         left: textbox.left,
         top: textbox.top,
-        width: textbox.width,
+        width: textboxWidth,
+        fontSize: textbox.fontSize
       }, canvasWidth, canvasHeight);
 
       return {
         id: String(i + 1),
         text: textbox.text || '',
         label: `Text Field ${i + 1}`,
-        left: position.left,
-        top: position.top,
+        left: textbox.left,
+        top: textbox.top,
         leftPercent: position.leftPercent,
         topPercent: position.topPercent,
         fontSize: textbox.fontSize,
@@ -1027,10 +1056,10 @@ export default function TemplateEditor({
         fontWeight: textbox.fontWeight,
         fontFamily: textbox.fontFamily,
         fill: textbox.fill,
-        width: position.width,
+        width: textboxWidth,
         widthPercent: position.widthPercent,
-        scaleX: textbox.scaleX ?? 1,
-        scaleY: textbox.scaleY ?? 1,
+        scaleX: 1,
+        scaleY: 1,
         textAlign: textbox.textAlign,
         angle: textbox.angle || 0,
         locked: (textbox as any).isLocked || false,
@@ -1039,7 +1068,6 @@ export default function TemplateEditor({
       };
     });
 
-    // Prefer current page publicId if available, fallback to template-level
     const currentPublicId = pages[currentPageIndex]?.publicId || cloudinaryPublicId || '';
 
     return {
@@ -1152,22 +1180,23 @@ export default function TemplateEditor({
 
       const textElements = objects.filter((obj) => obj instanceof Textbox).map((obj, i) => {
         const textbox = obj as Textbox;
-        // Force coordinate calculation to ensure positions are accurate
         textbox.setCoords();
 
-        // Convert to relative coordinates
-        const position = absoluteToRelative({
+        const textboxWidth = textbox.width || 250;
+
+        const position = CoordinateUtils.absoluteToRelative({
           left: textbox.left,
           top: textbox.top,
-          width: textbox.width,
+          width: textboxWidth,
+          fontSize: textbox.fontSize
         }, currentCanvasWidth, currentCanvasHeight);
 
         return {
           id: String(i + 1),
           text: textbox.text || '',
           label: `Text Field ${i + 1}`,
-          left: position.left,
-          top: position.top,
+          left: textbox.left,
+          top: textbox.top,
           leftPercent: position.leftPercent,
           topPercent: position.topPercent,
           fontSize: textbox.fontSize,
@@ -1175,10 +1204,10 @@ export default function TemplateEditor({
           fontWeight: textbox.fontWeight,
           fontFamily: textbox.fontFamily,
           fill: textbox.fill,
-          width: position.width,
+          width: textboxWidth,
           widthPercent: position.widthPercent,
-          scaleX: textbox.scaleX ?? 1,
-          scaleY: textbox.scaleY ?? 1,
+          scaleX: 1,
+          scaleY: 1,
           textAlign: textbox.textAlign,
           angle: textbox.angle || 0,
           locked: (textbox as any).isLocked || false,
@@ -1235,7 +1264,7 @@ export default function TemplateEditor({
               // Only scale if using new percentage format
               const hasPercentages = element.leftPercent !== undefined && element.topPercent !== undefined;
               const scaledPosition = hasPercentages
-                ? relativeToAbsolute(element, newCanvasWidth, newCanvasHeight)
+                ? CoordinateUtils.relativeToAbsolute(element, newCanvasWidth, newCanvasHeight)
                 : element;
 
               const tb = new Textbox(element.text, {
@@ -1245,9 +1274,9 @@ export default function TemplateEditor({
                 fontWeight: element.fontWeight,
                 fontFamily: element.fontFamily,
                 fill: element.fill,
-                width: scaledPosition.width,
-                scaleX: element.scaleX ?? 1,
-                scaleY: element.scaleY ?? 1,
+                width: scaledPosition.width || element.width || 250,
+                scaleX: 1,
+                scaleY: 1,
                 textAlign: element.textAlign,
                 angle: element.angle || 0,
                 originX: 'center',
@@ -1287,22 +1316,23 @@ export default function TemplateEditor({
 
       const textElements = objects.filter((o) => o instanceof Textbox).map((obj, i) => {
         const t = obj as Textbox;
-        // Force coordinate calculation to ensure positions are accurate
         t.setCoords();
 
-        // Convert to relative coordinates for responsive scaling
-        const position = absoluteToRelative({
+        const textboxWidth = t.width || 250;
+
+        const position = CoordinateUtils.absoluteToRelative({
           left: t.left,
           top: t.top,
-          width: t.width,
+          width: textboxWidth,
+          fontSize: t.fontSize
         }, canvasWidth, canvasHeight);
 
         return {
           id: String(i + 1),
           text: t.text,
           label: `Text Field ${i + 1}`,
-          left: position.left,
-          top: position.top,
+          left: t.left,
+          top: t.top,
           leftPercent: position.leftPercent,
           topPercent: position.topPercent,
           fontSize: t.fontSize,
@@ -1310,10 +1340,10 @@ export default function TemplateEditor({
           fontWeight: t.fontWeight,
           fontFamily: t.fontFamily,
           fill: t.fill,
-          width: position.width,
+          width: textboxWidth,
           widthPercent: position.widthPercent,
-          scaleX: t.scaleX ?? 1,
-          scaleY: t.scaleY ?? 1,
+          scaleX: 1,
+          scaleY: 1,
           textAlign: t.textAlign,
           angle: t.angle || 0,
           locked: (t as any).isLocked || false,
