@@ -112,7 +112,7 @@ function PreviewPageInner() {
 				if (draftKeyParam) sessionStorage.removeItem(draftKeyParam);
 				const catSlug = result.data?.category_slug;
 				const subSlug = result.data?.subcategory_slug;
-				const slug = result.data?.slug;
+				const slug = result.data?.public_slug;
 				if (slug) {
 					if (catSlug && subSlug) {
 						router.push(`/e-card/${catSlug}/${subSlug}/${slug}`);

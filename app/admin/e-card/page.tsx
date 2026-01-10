@@ -17,7 +17,7 @@ export default function AdminTemplatesPage() {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('/api/templates', {
+      const response = await fetch('/api/e-cards', {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache',
@@ -48,7 +48,7 @@ export default function AdminTemplatesPage() {
     if (!confirm('Delete this template permanently?')) return;
 
     try {
-      const response = await fetch(`/api/templates/${templateId}`, {
+      const response = await fetch(`/api/e-cards/${templateId}`, {
         method: 'DELETE',
       });
       const result = await response.json();
@@ -110,7 +110,7 @@ export default function AdminTemplatesPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {templates.map(template => (
                 <AdminTemplateCard
                   key={template.id}

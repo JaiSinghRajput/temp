@@ -29,7 +29,7 @@ function SearchContent() {
         setError('');
 
         const [cardsRes, videosRes] = await Promise.all([
-          fetch('/api/templates'),
+          fetch('/api/e-cards'),
           fetch('/api/e-video/templates'),
         ]);
 

@@ -5,15 +5,16 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import PageHeader from "@/components/layout/PageHeader";
 import { CategorySidebar } from "@/components/layout/catalog";
-import { slugify } from "@/lib/utils";
+import { slugify, buildUrl } from "@/lib/utils";
 import { VideoInviteTemplate } from "@/lib/types";
+import VideoCard from "@/components/Home/VideoCard";
 
 function parseSlug(slugParam?: string | string[]) {
   const parts = Array.isArray(slugParam)
     ? slugParam
     : typeof slugParam === "string"
-    ? [slugParam]
-    : [];
+      ? [slugParam]
+      : [];
   const [categorySlug, subcategorySlug] = parts;
   return { categorySlug, subcategorySlug };
 }
@@ -25,8 +26,8 @@ export default function VideoCatalog() {
   const slugParts = Array.isArray(params.slug)
     ? params.slug
     : typeof params.slug === "string"
-    ? [params.slug]
-    : [];
+      ? [params.slug]
+      : [];
 
   const { categorySlug, subcategorySlug } = parseSlug(slugParts);
 
@@ -150,15 +151,15 @@ export default function VideoCatalog() {
     { label: "E-Videos", href: "/e-videos" },
     activeCategory && activeCategoryName
       ? {
-          label: activeCategoryName,
-          href: `/e-videos/${activeCategory}`,
-        }
+        label: activeCategoryName,
+        href: `/e-videos/${activeCategory}`,
+      }
       : null,
     activeSubcategory && activeSubcategoryName && activeCategory
       ? {
-          label: activeSubcategoryName,
-          href: `/e-videos/${activeCategory}/${activeSubcategory}`,
-        }
+        label: activeSubcategoryName,
+        href: `/e-videos/${activeCategory}/${activeSubcategory}`,
+      }
       : null,
   ].filter(Boolean) as { label: string; href?: string }[];
 
@@ -200,62 +201,15 @@ export default function VideoCatalog() {
             {/* Grid */}
             <section className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {templates.map((video) => {
-                const parts = ["/e-videos"];
-                if (video.category_slug) parts.push(video.category_slug);
-                if (video.subcategory_slug) parts.push(video.subcategory_slug);
-                parts.push(video.slug);
-
+                const videoUrl = buildUrl(video);
                 return (
-                  <div
+                  <VideoCard
                     key={video.id}
-                    className="bg-white rounded-2xl border shadow-sm hover:shadow-lg transition overflow-hidden flex flex-col"
-                  >
-                    <div className="relative h-56 bg-gray-100">
-                      {video.preview_thumbnail_url ? (
-                        <img
-                          src={video.preview_thumbnail_url}
-                          alt={video.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <video
-                          src={video.preview_video_url}
-                          className="w-full h-full object-cover"
-                        />
-                      )}
-                      <span className="absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-semibold bg-white border">
-                        Video
-                      </span>
-                    </div>
-
-                    <div className="p-5 flex flex-col gap-3 flex-1">
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-[#d18b47] font-semibold">
-                          E-Video Invite
-                        </p>
-                        <h3 className="font-semibold text-gray-900 line-clamp-2">
-                          {video.title}
-                        </h3>
-                        {video.price && (
-                          <p className="text-sm font-semibold text-gray-800">
-                            ₹{video.price}
-                          </p>
-                        )}
-                        {video.description && (
-                          <p className="text-sm text-gray-600 line-clamp-3">
-                            {video.description}
-                          </p>
-                        )}
-                      </div>
-
-                      <Link
-                        href={parts.join("/")}
-                        className="mt-auto block text-center py-2.5 border border-gray-300 rounded-lg font-semibold hover:border-gray-400 transition"
-                      >
-                        View
-                      </Link>
-                    </div>
-                  </div>
+                    image={video.preview_thumbnail_url || ""}
+                    name={video.title || "Video Invitation"}
+                    price={video.price || 0}
+                    link={videoUrl}
+                  />
                 );
               })}
 

@@ -236,20 +236,20 @@ Ensure all production environment variables are set before deployment.
 
 ### Public Endpoints
 - `GET /api/categories` - List all categories
-- `GET /api/templates` - Get e-card templates
+- `GET /api/e-cards` - Get e-card templates
 - `GET /api/e-video/templates` - Get video templates
 - `POST /api/auth/login` - User login
 - `POST /api/auth/register` - User registration
 
 ### Protected Endpoints (Require Auth)
 - `GET /api/user-ecards` - Get user's created cards
-- `POST /api/templates/:id/customize` - Save customized card
+- `POST /api/e-cards/:id/customize` - Save customized card
 - `POST /api/payments/razorpay/order` - Create payment order
 
 ### Admin Endpoints (Admin Only)
-- `POST /api/templates` - Create new template
-- `PUT /api/templates/:id` - Update template
-- `DELETE /api/templates/:id` - Delete template
+- `POST /api/e-cards` - Create new template
+- `PUT /api/e-cards/:id` - Update template
+- `DELETE /api/e-cards/:id` - Delete template
 - `POST /api/categories` - Create category
 - `POST /api/fonts` - Add custom font
 

@@ -358,7 +358,7 @@ export interface VideoInviteRequest {
   requester_email?: string | null;
   requester_phone?: string | null;
   payload: Record<string, any>;
-  status: 'new' | 'in_progress' | 'done' | 'cancelled' | 'draft';
+  status: 'new' | 'in_progress' | 'done' | 'cancelled' | 'draft' | 'paid' | 'completed';
   admin_notes?: string | null;
   payment_status?: 'pending' | 'paid';
   payment_order_id?: string | null;

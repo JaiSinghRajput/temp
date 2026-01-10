@@ -125,7 +125,7 @@ export function AdminTemplateCard({
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
+        <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100 align-bottom">
           <button
             onClick={handleEdit}
             className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition"

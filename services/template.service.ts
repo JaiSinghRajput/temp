@@ -3,31 +3,31 @@ import axiosInstance from '@/lib/axios';
 export const templateService = {
   // Get all templates
   async getTemplates(params?: { category_id?: number; subcategory_id?: number; category_slug?: string; subcategory_slug?: string }) {
-    const response = await axiosInstance.get('/api/templates', { params });
+    const response = await axiosInstance.get('/api/e-cards', { params });
     return response.data;
   },
 
   // Get template by ID
   async getTemplateById(id: string | number) {
-    const response = await axiosInstance.get(`/api/templates/${id}`);
+    const response = await axiosInstance.get(`/api/e-cards/${id}`);
     return response.data;
   },
 
   // Create template
   async createTemplate(data: any) {
-    const response = await axiosInstance.post('/api/templates', data);
+    const response = await axiosInstance.post('/api/e-cards', data);
     return response.data;
   },
 
   // Update template
   async updateTemplate(id: string | number, data: any) {
-    const response = await axiosInstance.put(`/api/templates/${id}`, data);
+    const response = await axiosInstance.put(`/api/e-cards/${id}`, data);
     return response.data;
   },
 
   // Delete template
   async deleteTemplate(id: string | number) {
-    const response = await axiosInstance.delete(`/api/templates/${id}`);
+    const response = await axiosInstance.delete(`/api/e-cards/${id}`);
     return response.data;
   },
 };

@@ -161,10 +161,12 @@ export default function CustomizeECardPage() {
         user_name: user?.name || undefined,
       });
 
+      // throw new Error(result); // For testing error state
+
       if (result.success) {
         const catSlug = result.data?.category_slug;
         const subSlug = result.data?.subcategory_slug;
-        const slug = result.data?.slug;
+        const slug = result.data?.public_slug;
         if (slug) {
           if (catSlug && subSlug) {
             router.push(`/e-card/${catSlug}/${subSlug}/${slug}`);

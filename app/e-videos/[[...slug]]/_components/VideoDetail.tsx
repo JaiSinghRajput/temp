@@ -57,14 +57,11 @@ export default function VideoDetail({ templateSlug }: { templateSlug: string }) 
           />
           <span className="absolute bottom-20 right-2 text-amber-200 text-2xl opacity-50 ">Dream Wedding Hub</span>
         </div>
-
-        <p className="text-lg font-semibold">₹{template.price}</p>
-
         <Link
           href={`${pathname}/request`}
           className="px-8 py-3 rounded-xl bg-[#d18b47] text-white font-semibold"
         >
-          Request to Make
+          Create Video
         </Link>
       </div>
     </div>

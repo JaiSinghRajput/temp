@@ -1,11 +1,11 @@
 -- =====================================================
 -- DATABASE
 -- =====================================================
-CREATE DATABASE IF NOT EXISTS invite_platform
+CREATE DATABASE IF NOT EXISTS dwh_shop_database
   DEFAULT CHARACTER SET utf8mb4
   DEFAULT COLLATE utf8mb4_unicode_ci;
 
-USE invite_platform;
+USE dwh_shop_database;
 
 -- =====================================================
 -- 1. IDENTITY DOMAIN
@@ -84,10 +84,15 @@ CREATE TABLE categories (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   slug VARCHAR(255) NOT NULL UNIQUE,
+
+  -- NOTE: this is a bit weird in your design; keep if needed
   category_type ENUM('card','video','cloths','dresses') NOT NULL DEFAULT 'card',
+
   parent_id BIGINT NULL,
   is_active BOOLEAN DEFAULT TRUE,
-  FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE
+  FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE,
+  INDEX idx_parent (parent_id),
+  INDEX idx_active (is_active)
 ) ENGINE=InnoDB;
 
 CREATE TABLE category_links (
@@ -113,7 +118,13 @@ CREATE TABLE products (
   sale_price DECIMAL(10,2),
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (content_id) REFERENCES content_items(id) ON DELETE SET NULL
+
+  -- ✅ IMPORTANT: 1 content -> 1 product
+  UNIQUE KEY uq_products_content (content_id),
+
+  FOREIGN KEY (content_id) REFERENCES content_items(id) ON DELETE SET NULL,
+  INDEX idx_type (type),
+  INDEX idx_active (is_active)
 ) ENGINE=InnoDB;
 
 CREATE TABLE orders (
@@ -138,9 +149,11 @@ CREATE TABLE orders (
   billing_address JSON NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
   FOREIGN KEY (user_id) REFERENCES users(uid) ON DELETE SET NULL,
   INDEX idx_user (user_id),
-  INDEX idx_status (status)
+  INDEX idx_status (status),
+  INDEX idx_created (created_at)
 ) ENGINE=InnoDB;
 
 CREATE TABLE order_items (
@@ -152,21 +165,39 @@ CREATE TABLE order_items (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
-  INDEX idx_order (order_id)
+  INDEX idx_order (order_id),
+  INDEX idx_product (product_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE payments (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   order_id BIGINT NOT NULL,
-  provider VARCHAR(50),
+
+  provider VARCHAR(50) DEFAULT 'razorpay',
+
+  -- ✅ Razorpay Order ID (ex: order_ABC123)
   provider_reference VARCHAR(255),
+
+  -- ✅ Razorpay Payment ID (ex: pay_ABC123)
+  provider_payment_id VARCHAR(255) NULL,
+
+  -- ✅ Razorpay Signature
+  provider_signature VARCHAR(255) NULL,
+
+  -- amount stored in RUPEES (not paise)
   amount DECIMAL(10,2) NOT NULL,
   currency VARCHAR(10) DEFAULT 'INR',
+
   status ENUM('pending','success','failed','refunded') DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+
   INDEX idx_order (order_id),
-  INDEX idx_status (status)
+  INDEX idx_status (status),
+
+  -- ✅ Avoid duplicate provider order IDs
+  UNIQUE KEY uq_provider_reference (provider_reference)
 ) ENGINE=InnoDB;
 
 -- =====================================================
@@ -188,7 +219,9 @@ CREATE TABLE shipments (
   shipped_at TIMESTAMP NULL,
   delivered_at TIMESTAMP NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  INDEX idx_order (order_id),
+  INDEX idx_status (status)
 ) ENGINE=InnoDB;
 
 -- =====================================================
@@ -199,14 +232,23 @@ CREATE TABLE user_custom_content (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   content_id BIGINT NOT NULL,
   user_id VARCHAR(36) NULL,
+
+  -- ✅ IMPORTANT: connect customization to commerce order
+  order_id BIGINT NULL,
+
   custom_data JSON NOT NULL,
   preview_url TEXT,
   status ENUM('draft','submitted','paid','completed') DEFAULT 'draft',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
   FOREIGN KEY (content_id) REFERENCES content_items(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id) REFERENCES users(uid) ON DELETE SET NULL,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
+
   INDEX idx_content (content_id),
-  INDEX idx_user (user_id)
+  INDEX idx_user (user_id),
+  INDEX idx_order (order_id),
+  INDEX idx_status (status)
 ) ENGINE=InnoDB;
 
 -- =====================================================

@@ -1,8 +1,8 @@
-import TemplateEditor from '../../_components/card_editor/TemplateEditor';
+import TemplateEditor from '@/app/admin/e-card/_components/card_editor/TemplateEditor';
 
 async function fetchTemplate(id: string) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  const fullUrl = `${baseUrl}/api/templates/${id}`;
+  const fullUrl = `${baseUrl}/api/e-cards/${id}`;
   console.log('Fetching template from URL:', fullUrl);
   const res = await fetch(fullUrl, { cache: 'no-store' });
   console.log('Response status:', res.status);

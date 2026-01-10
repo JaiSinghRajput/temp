@@ -60,7 +60,7 @@ const SmoothCarousel: React.FC<SmoothCarouselProps> = ({
               <img
                 src={item.image}
                 alt={item.title || "carousel item"}
-                className="w-60 h-auto rounded-md shadow-md mx-auto"
+                className="w-60 h-100 rounded-md shadow-md mx-auto"
               />
             </Link>
           </div>

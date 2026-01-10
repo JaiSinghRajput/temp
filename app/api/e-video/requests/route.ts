@@ -26,14 +26,32 @@ export async function GET(request: NextRequest) {
     const filters: string[] = [];
     const params: (string | number)[] = [];
 
+    const hasSpecificId = Boolean(id);
+    const isUserScoped = Boolean(userId);
+
     if (id) {
       filters.push('ucc.id = ?');
       params.push(Number(id));
     }
 
+    // Status handling:
+    // - If caller passes an explicit status, respect it.
+    // - If user-scoped or fetching by id, do not force paid/completed.
+    // - Otherwise (admin list), default to paid/completed only.
     if (status) {
-      filters.push('ucc.status = ?');
-      params.push(status);
+      if (status === 'completed') {
+        filters.push('ucc.status = ?');
+        params.push('completed');
+      } else if (status === 'paid') {
+        filters.push('ucc.status = ?');
+        params.push('paid');
+      } else {
+        filters.push('ucc.status = ?');
+        params.push(status);
+      }
+    } else if (!isUserScoped && !hasSpecificId) {
+      filters.push('(ucc.status = ? OR ucc.status = ?)');
+      params.push('paid', 'completed');
     }
 
     // paymentStatus filter skipped because user_custom_content does not store payment_status
@@ -92,9 +110,14 @@ export async function GET(request: NextRequest) {
          MAX(ci.slug) AS template_slug, 
          MAX(p.price) AS template_price,
          GROUP_CONCAT(DISTINCT c_main.slug) AS template_category_slug,
-         GROUP_CONCAT(DISTINCT c_sub.slug) AS template_subcategory_slug
+         GROUP_CONCAT(DISTINCT c_sub.slug) AS template_subcategory_slug,
+         u.first_name AS user_first_name,
+         u.last_name AS user_last_name,
+        u.email AS user_email,
+        u.phone AS user_phone
        FROM user_custom_content ucc
        JOIN content_items ci ON ci.id = ucc.content_id AND ci.type = 'video'
+       LEFT JOIN users u ON u.uid = ucc.user_id
        LEFT JOIN video_templates vt ON vt.content_id = ci.id
        LEFT JOIN products p ON p.content_id = ci.id
        LEFT JOIN category_links cl_main ON cl_main.target_id = ci.id AND cl_main.target_type = 'content'
@@ -110,13 +133,42 @@ export async function GET(request: NextRequest) {
     const data = rows.map((row) => {
       const price = (row as any).template_price;
       const parsedPrice = price !== null && price !== undefined ? Number(price) : null;
+      const payload = safeParse<Record<string, any>>((row as any).custom_data, {});
+
+      const userFirst = (row as any).user_first_name || '';
+      const userLast = (row as any).user_last_name || '';
+      const userName = `${userFirst} ${userLast}`.trim();
+
+      const requester_name =
+        (payload as any)?.requester_name ||
+        (payload as any)?.name ||
+        (userName ? userName : null);
+
+      const requester_email =
+        (payload as any)?.requester_email ||
+        (payload as any)?.email ||
+        (row as any).user_email ||
+        null;
+
+      const requester_phone =
+        (payload as any)?.requester_phone ||
+        (payload as any)?.phone ||
+        (row as any).user_phone ||
+        null;
+
       return {
         ...(row as any),
+        requester_name,
+        requester_email,
+        requester_phone,
+        user_name: userName || null,
+        user_email: (row as any).user_email || null,
+        user_phone: (row as any).user_phone || null,
         template_price: parsedPrice,
         template_pricing_type: parsedPrice && parsedPrice > 0 ? 'premium' : 'free',
         template_category_slug: (row as any).template_category_slug || null,
         template_subcategory_slug: (row as any).template_subcategory_slug || null,
-        payload: safeParse<Record<string, any>>((row as any).custom_data, {}),
+        payload,
       };
     });
 
