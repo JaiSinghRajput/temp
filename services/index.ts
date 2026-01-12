@@ -1,7 +1,7 @@
 // Export all services from a central location
 export { authService } from './auth.service';
 export { templateService } from './template.service';
-export { categoryService } from './category.service';
+export { CardcategoryService, VideocategoryService, DresscategoryService, GiftcategoryService } from './categories/service';
 export { videoService } from './video.service';
 export { userEcardService } from './user-ecard.service';
 export { paymentService } from './payment.service';

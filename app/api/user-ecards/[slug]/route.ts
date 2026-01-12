@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { RowDataPacket } from 'mysql2';
-import { slugify } from '@/lib/utils';
 
 export async function GET(
-  request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {

@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { Template } from '@/lib/types';
 import { slugify } from '@/lib/utils';
-import { COLOR_OPTIONS } from '@/lib/constants';
 import { ColorSelect } from '@/components/ui/color-select';
 import { CategorySidebar } from '@/components/layout/catalog';
 import { TemplateCard } from '@/components/templates/template-card';

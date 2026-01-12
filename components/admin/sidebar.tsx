@@ -76,16 +76,32 @@ export function AdminSidebar() {
             key: 'categories-card',
             name: 'Card',
             children: [
-              { key: 'categories-card-main', name: 'Categories', href: '/admin/categories' },
-              { key: 'categories-card-sub', name: 'Subcategories', href: '/admin/subcategories' },
+              { key: 'categories-card-main', name: 'Categories', href: '/admin/categories/card/categories' },
+              { key: 'categories-card-sub', name: 'Subcategories', href: '/admin/categories/card/subcategories' },
             ],
           },
           {
             key: 'categories-video',
             name: 'Video',
             children: [
-              { key: 'categories-video-main', name: 'Categories', href: '/admin/video-categories' },
-              { key: 'categories-video-sub', name: 'Subcategories', href: '/admin/video-subcategories' },
+              { key: 'categories-video-main', name: 'Categories', href: '/admin/categories/video/categories' },
+              { key: 'categories-video-sub', name: 'Subcategories', href: '/admin/categories/video/subcategories' },
+            ],
+          },
+          {
+            key: 'categories-dresses',
+            name: 'Dresses',
+            children: [
+              { key: 'categories-dresses-main', name: 'Categories', href: '/admin/categories/dresses/categories' },
+              { key: 'categories-dresses-sub', name: 'Subcategories', href: '/admin/categories/dresses/subcategories' },
+            ],
+          },
+          {
+            key: 'categories-gifts',
+            name: 'Gifts',
+            children: [
+              { key: 'categories-gifts-main', name: 'Categories', href: '/admin/categories/gifts/categories' },
+              { key: 'categories-gifts-sub', name: 'Subcategories', href: '/admin/categories/gifts/subcategories' },
             ],
           },
         ],

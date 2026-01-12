@@ -1,13 +1,13 @@
 "use client";
-
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import PageHeader from "@/components/layout/PageHeader";
 import { CategorySidebar } from "@/components/layout/catalog";
 import { slugify, buildUrl } from "@/lib/utils";
 import { VideoInviteTemplate } from "@/lib/types";
+import { VideocategoryService } from "@/services";
 import VideoCard from "@/components/Home/VideoCard";
+import { Video } from "lucide-react";
 
 function parseSlug(slugParam?: string | string[]) {
   const parts = Array.isArray(slugParam)
@@ -58,18 +58,15 @@ export default function VideoCatalog() {
       setError("");
 
       const [catsRes, subsRes] = await Promise.all([
-        fetch("/api/video-categories"),
-        fetch("/api/video-subcategories"),
+      VideocategoryService.getVideoCategories(),
+      VideocategoryService.getVideoSubcategories(),
       ]);
 
-      const catsJson = await catsRes.json();
-      const subsJson = await subsRes.json();
-
       /* ----- Shape categories ----- */
-      if (catsJson.success) {
+      if (catsRes.success && Array.isArray(catsRes.data)) {
         const subsByCategory: Record<number, any[]> = {};
-        if (subsJson.success && Array.isArray(subsJson.data)) {
-          subsJson.data.forEach((sub: any) => {
+        if (subsRes.success && Array.isArray(subsRes.data)) {
+          subsRes.data.forEach((sub: any) => {
             if (!subsByCategory[sub.category_id]) {
               subsByCategory[sub.category_id] = [];
             }
@@ -77,7 +74,7 @@ export default function VideoCatalog() {
           });
         }
 
-        const shaped = catsJson.data.map((cat: any) => ({
+        const shaped = catsRes.data.map((cat: any) => ({
           ...cat,
           slug: cat.slug || slugify(cat.name || ""),
           subcategories: (subsByCategory[cat.id] || []).map((sub) => ({

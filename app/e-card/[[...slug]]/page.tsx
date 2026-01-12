@@ -7,9 +7,9 @@ import PageHeader from '@/components/layout/PageHeader';
 import { DetailView } from '@/app/e-card/_components/DetailView';
 import { ListView } from '@/app/e-card/_components/ListView';
 import ShareCard from '@/app/e-card/_components/ShareCard';
+import { CardcategoryService } from '@/services';
 
 const stripNumericSuffix = (value: string) => value.replace(/-\d+$/, '');
-const hasNumericSuffix = (value: string) => /-\d+$/.test(value);
 
 function parseSlug(slugParam?: string | string[]) {
     const parts = Array.isArray(slugParam)
@@ -17,10 +17,10 @@ function parseSlug(slugParam?: string | string[]) {
         : typeof slugParam === 'string'
             ? [slugParam]
             : [];
-    
+
     if (parts.length >= 2) {
         const lastIsNumeric = /^\d+$/.test(parts[parts.length - 1]);
-        
+
         if (lastIsNumeric && parts.length === 2) {
             return { categorySlug: undefined, subcategorySlug: undefined };
         } else if (lastIsNumeric && parts.length >= 3) {
@@ -44,10 +44,9 @@ export default function ECardHomePage() {
             ? [params.slug]
             : [];
     const initialIsDetail = (slugParts.length === 1 && !/^\d+$/.test(slugParts[0])) ||
-                           (slugParts.length === 3 && !/^\d+$/.test(slugParts[2]));
+        (slugParts.length === 3 && !/^\d+$/.test(slugParts[2]));
 
     const [templates, setTemplates] = useState<Template[]>([]);
-    const [videoTemplates, setVideoTemplates] = useState<any[]>([]);
     const [colorFilter, setColorFilter] = useState('all');
     const [categories, setCategories] = useState<any[]>([]);
     const [activeCategory, setActiveCategory] = useState<string | undefined>(initialSlugs.categorySlug);
@@ -76,18 +75,14 @@ export default function ECardHomePage() {
 
             // Fetch categories and subcategories first
             const [catsRes, subsRes] = await Promise.all([
-                fetch('/api/categories'),
-                fetch('/api/subcategories'),
+                CardcategoryService.getCardCategories(),
+                CardcategoryService.getCardSubcategories(undefined),
             ]);
 
-            const catsJson = await catsRes.json();
-            const subsJson = await subsRes.json();
-
-            const categories = catsJson.success ? catsJson.data : [];
-            const subcategories = subsJson.success ? subsJson.data : [];
-
+            const categories = catsRes.success ? catsRes.data : [];
+            const subcategories = subsRes.success ? subsRes.data : [];
             if (parts.length === 1) {
-                const categoryMatch = categories.find((c: any) => 
+                const categoryMatch = categories.find((c: any) =>
                     (c.slug || slugify(c.name || '')) === parts[0]
                 );
 
@@ -112,10 +107,10 @@ export default function ECardHomePage() {
                     await fetchTemplateDetail(parts[0]);
                 }
             } else if (parts.length === 2) {
-                const categoryMatch = categories.find((c: any) => 
+                const categoryMatch = categories.find((c: any) =>
                     (c.slug || slugify(c.name || '')) === parts[0]
                 );
-                const subcategoryMatch = subcategories.find((s: any) => 
+                const subcategoryMatch = subcategories.find((s: any) =>
                     (s.slug || slugify(s.name || '')) === parts[1]
                 );
 
@@ -143,18 +138,18 @@ export default function ECardHomePage() {
                     setLoading(false);
                 }
             } else if (parts.length === 3) {
-                const categoryMatch = categories.find((c: any) => 
+                const categoryMatch = categories.find((c: any) =>
                     (c.slug || slugify(c.name || '')) === parts[0]
                 );
-                const subcategoryMatch = subcategories.find((s: any) => 
+                const subcategoryMatch = subcategories.find((s: any) =>
                     (s.slug || slugify(s.name || '')) === parts[1]
                 );
 
                 // Check if it's a published card or template detail
-                    // Published cards have public_slug format: card-{timestamp}-{random}
-                    const isPublishedCard = parts[2].startsWith('card-');
-                
-                    if (isPublishedCard) {
+                // Published cards have public_slug format: card-{timestamp}-{random}
+                const isPublishedCard = parts[2].startsWith('card-');
+
+                if (isPublishedCard) {
                     // Published card - validate category/subcategory
                     if (categoryMatch && subcategoryMatch && subcategoryMatch.category_id === categoryMatch.id) {
                         setViewMode('published');
@@ -170,7 +165,7 @@ export default function ECardHomePage() {
                     setViewMode('detail');
                     setActiveCategory(undefined);
                     setActiveSubcategory(undefined);
-                    
+
                     // Fetch template and validate category/subcategory match
                     fetchTemplateDetail(parts[2], categoryMatch, subcategoryMatch);
                 }
@@ -249,7 +244,7 @@ export default function ECardHomePage() {
                     if (categoryMatch && subcategoryMatch) {
                         const categoryMatches = template.category_slug === categoryMatch.slug;
                         const subcategoryMatches = template.subcategory_slug === subcategoryMatch.slug;
-                        
+
                         if (!categoryMatches || !subcategoryMatches) {
                             // Template exists but path doesn't match - redirect to correct path
                             const correctCategorySlug = template.category_slug || (template.category_name ? slugify(template.category_name) : 'uncategorized');
@@ -347,9 +342,9 @@ export default function ECardHomePage() {
         }
     };
 
-    const currentDetailSlug = (slugParts.length === 1 && !/^\d+$/.test(slugParts[0])) 
-        ? slugParts[0] 
-        : (slugParts.length === 3 && !/^\d+$/.test(slugParts[2])) 
+    const currentDetailSlug = (slugParts.length === 1 && !/^\d+$/.test(slugParts[0]))
+        ? slugParts[0]
+        : (slugParts.length === 3 && !/^\d+$/.test(slugParts[2]))
             ? slugParts[2]
             : undefined;
 
