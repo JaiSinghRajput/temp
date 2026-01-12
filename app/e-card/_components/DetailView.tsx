@@ -1,18 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Template } from '@/lib/types';
 
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from '@/components/ui/carousel';
-
-import Autoplay from 'embla-carousel-autoplay';
+import { Carousel, CarouselContent, CarouselItem } from '@/components/ui/carousel';
+import type { CarouselApi } from '@/components/ui/carousel';
 
 interface TemplateDetailProps {
   template?: Template | null;
@@ -22,8 +15,46 @@ interface TemplateDetailProps {
 }
 
 export function DetailView({ template, loading, error, onRetry }: TemplateDetailProps) {
+  const [api, setApi] = useState<CarouselApi | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
 
+  // ✅ SAFE pages (doesn't crash while template undefined)
+  const pages = useMemo(() => {
+    if (!template) return [];
+
+    return template.is_multipage && template.pages?.length
+      ? template.pages
+      : [
+          {
+            imageUrl:
+              template.pages?.[0]?.previewImageUrl ||
+              template.thumbnail_url ||
+              template.template_image_url ||
+              template.pages?.[0]?.imageUrl,
+          },
+        ];
+  }, [template]);
+
+  // ✅ HOOK MUST ALWAYS RUN (even while loading/error)
+  useEffect(() => {
+    if (!api) return;
+
+    const onSelect = () => setCurrentPage(api.selectedScrollSnap());
+
+    api.on('select', onSelect);
+    setCurrentPage(api.selectedScrollSnap());
+
+    return () => {
+      api.off('select', onSelect);
+    };
+  }, [api]);
+
+  const handlePageClick = (idx: number) => {
+    setCurrentPage(idx);
+    api?.scrollTo(idx);
+  };
+
+  // ✅ Now early returns are safe
   if (loading) {
     return (
       <div className="flex flex-col items-center py-20">
@@ -47,120 +78,85 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
     );
   }
 
-  const pages =
-    template.is_multipage && template.pages?.length
-      ? template.pages
-      : [
-          {
-            imageUrl:
-              template.pages?.[0]?.previewImageUrl ||
-              template.thumbnail_url ||
-              template.template_image_url ||
-              template.pages?.[0]?.imageUrl,
-          },
-        ];
-
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="grid grid-cols-1 gap-10">
+    <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* PREVIEW SECTION EXACT STRUCTURE (same mobile + desktop) */}
+      <div className="flex flex-col items-center gap-4">
+        {/* PAGE BUTTONS */}
+        {pages.length > 1 && (
+          <div className="flex flex-wrap justify-center gap-3 pt-2">
+            {pages.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => handlePageClick(idx)}
+                className={`px-5 py-2 rounded-full text-sm font-medium border transition-all cursor-pointer shadow-sm
+                  ${
+                    idx === currentPage
+                      ? 'bg-blue-50 text-black shadow-sm border-[#e9ad99]/60'
+                      : 'bg-transparent text-black/80 border-white/30 hover:border-[#e9ad99]/60'
+                  }
+                `}
+              >
+                page {idx + 1}
+              </button>
+            ))}
+          </div>
+        )}
 
-        {/* PREVIEW */}
-        <div className="relative">
-          <div
-            className="sticky top-24 rounded-3xl bg-[#f3e4d6] shadow-sm"
-            style={{ aspectRatio: '3 / 5' }}
-          >
-            <Carousel
-              opts={{ loop: true }}
-              plugins={[
-                Autoplay({
-                  delay: 4000,
-                  stopOnInteraction: true,
-                }),
-              ]}
-              setApi={(api) => {
-                if (!api) return;
-                api.on('select', () => setCurrentPage(api.selectedScrollSnap()));
-              }}
-            >
-              <CarouselContent>
-                {pages.map((page, idx) => (
-                  <CarouselItem key={idx}>
-                    {(page as any).previewImageUrl || page.imageUrl ? (
-                      <img
-                        src={(page as any).previewImageUrl || page.imageUrl}
-                        alt={`${template.title} page ${idx + 1}`}
-                        className="w-full h-full"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400">
-                        No preview
-                      </div>
-                    )}
-                  </CarouselItem>
-                ))}
-              </CarouselContent>
-
-              {pages.length > 1 && (
-                <div className='md:block hidden'>
-                  <CarouselPrevious />
-                  <CarouselNext />
-                </div>
-              )}
-            </Carousel>
-
-            {/* Page Indicator */}
-            <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/90 text-xs font-semibold border">
-              {pages.length > 1
-                ? `Page ${currentPage + 1} of ${pages.length}`
-                : 'Preview'}
-            </span>
-
-            {/* Dots */}
-            {pages.length > 1 && (
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                {pages.map((_, idx) => (
-                  <div
-                    key={idx}
-                    className={`h-2 rounded-full transition-all ${
-                      idx === currentPage
-                        ? 'w-6 bg-[#d18b47]'
-                        : 'w-2 bg-white/70'
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
+        {/* PREVIEW BOX */}
+        <div className="w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl">
+          <div className="rounded-3xl border border-white/20 bg-black/40 p-3">
+            <div className="rounded-2xl overflow-hidden border border-white/20 bg-black">
+              <Carousel opts={{ loop: false }} setApi={setApi}>
+                <CarouselContent>
+                  {pages.map((page: any, idx) => (
+                    <CarouselItem key={idx}>
+                      {page.previewImageUrl || page.imageUrl ? (
+                        <img
+                          src={page.previewImageUrl || page.imageUrl}
+                          alt={`${template.title} page ${idx + 1}`}
+                          className="w-full h-auto object-contain"
+                        />
+                      ) : (
+                        <div className="aspect-3/4 w-full flex items-center justify-center text-gray-400">
+                          No preview
+                        </div>
+                      )}
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+              </Carousel>
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* DETAILS */}
-        <div className="flex flex-col justify-start pt-2">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900">
-            {template.title}
-          </h1>
+      {/* DETAILS BELOW PREVIEW */}
+      <div className="mt-10 flex flex-col items-center text-center">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900">
+          {template.title}
+        </h1>
 
-          {template.description && (
-            <p className="text-base text-gray-600 mt-4 max-w-xl">
-              {template.description}
-            </p>
-          )}
+        {template.description && (
+          <p className="text-base text-gray-600 mt-4 max-w-xl">
+            {template.description}
+          </p>
+        )}
 
-          <div className="mt-8 flex flex-col sm:flex-row gap-4">
-            <Link
-              href={`/e-card/customize/${template.id}`}
-              className="p-2 py-2.5 rounded-xl bg-[#d18b47] text-white font-semibold text-center hover:bg-[#c07c3c]"
-            >
-              Customize Card
-            </Link>
+        <div className="mt-8 flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+          <Link
+            href={`/e-card/customize/${template.id}`}
+            className="px-6 py-2.5 rounded-xl bg-[#d18b47] text-white font-semibold text-center hover:bg-[#c07c3c]"
+          >
+            Customize Card
+          </Link>
 
-            <Link
-              href="/e-card"
-              className="p-2 py-2.5 rounded-xl border border-gray-300 text-gray-800 font-semibold text-center hover:border-gray-400"
-            >
-              Back to catalog
-            </Link>
-          </div>
+          <Link
+            href="/e-card"
+            className="px-6 py-2.5 rounded-xl border border-gray-300 text-gray-800 font-semibold text-center hover:border-gray-400"
+          >
+            Back to catalog
+          </Link>
         </div>
       </div>
     </div>
