@@ -1,5 +1,4 @@
 'use client';
-
 import React from 'react';
 import Link from 'next/link';
 import { FaFacebookF, FaInstagram, FaLinkedinIn, FaPinterestP } from 'react-icons/fa';
@@ -107,7 +106,7 @@ const Footer: React.FC = () => {
               aria-label="Facebook"
               className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
             >
-              <FaFacebookF size={14} />
+              <FaFacebookF className='size-5' />
             </a>
 
             <a
@@ -117,7 +116,7 @@ const Footer: React.FC = () => {
               aria-label="Instagram"
               className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
             >
-              <FaInstagram size={16} />
+              <FaInstagram className='size-5' />
             </a>
 
             <a
@@ -127,7 +126,7 @@ const Footer: React.FC = () => {
               aria-label="Pinterest"
               className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
             >
-              <FaPinterestP size={16} />
+              <FaPinterestP className='size-5' />
             </a>
             <a
               href="https://www.linkedin.com/company/dream-wedding-hub"
@@ -136,7 +135,7 @@ const Footer: React.FC = () => {
               aria-label="linkedin"
               className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
             >
-              <FaLinkedinIn size={16} />
+              <FaLinkedinIn className='size-5' />
             </a>
             <a
               href="https://x.com/dreamweddinghub"
@@ -145,7 +144,7 @@ const Footer: React.FC = () => {
               aria-label="x"
               className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
             >
-              <FaXTwitter size={16} />
+              <FaXTwitter className='size-5' />
             </a>
             <a
               href="https://www.youtube.com/@DreamWeddingHub"
@@ -154,7 +153,7 @@ const Footer: React.FC = () => {
               aria-label="YouTube"
               className="w-9 h-9 flex items-center justify-center rounded-full border border-gray-300 text-gray-500 hover:bg-[#d18b47] hover:text-white hover:border-[#d18b47] transition"
             >
-              <FaYoutube size={16} />
+              <FaYoutube className='size-5' />
             </a>
           </div>
 

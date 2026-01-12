@@ -26,7 +26,6 @@ export default function VideoRequestWizard({
   const [loading, setLoading] = useState(true);
   const [activeStep, setActiveStep] = useState(0);
 
-  // 🔥 FIXED DATA MODEL (values per card)
   const [fieldValues, setFieldValues] = useState<
     Record<number, Record<string, any>>
   >({});
@@ -52,14 +51,15 @@ export default function VideoRequestWizard({
 
   // Load draft payload if requestId is present
   useEffect(() => {
-    const requestId = searchParams?.get('requestId');
+    const requestId = searchParams?.get("requestId");
     if (!requestId) return;
 
     const loadDraft = async () => {
       try {
         const res = await fetch(`/api/e-video/requests?id=${requestId}`);
         const json = await res.json();
-        if (!json.success || !Array.isArray(json.data) || !json.data.length) return;
+        if (!json.success || !Array.isArray(json.data) || !json.data.length)
+          return;
 
         const request = json.data[0];
         const payload = request.payload || {};
@@ -76,7 +76,7 @@ export default function VideoRequestWizard({
 
         setFieldValues(restored);
       } catch (err) {
-        console.error('Failed to load draft payload', err);
+        console.error("Failed to load draft payload", err);
       }
     };
 
@@ -88,9 +88,11 @@ export default function VideoRequestWizard({
   }
 
   const cards = template.cards || [];
-  const steps = [...cards.map((_, i) => `Card ${i + 1}`), "Review & Pay"];
-  const isReviewStep = activeStep >= cards.length;
-  const activeCard = cards[activeStep];
+  const steps = [...cards.map((_, i) => `Card ${i + 1}`), "Payment"];
+  const isPaymentStep = activeStep === cards.length;
+  const activeCard = !isPaymentStep ? cards[activeStep] : null;
+  const isLastCard = activeStep === cards.length - 1;
+
 
   const templatePrice = Number(template.price || 0);
   const isPremium = templatePrice > 0;
@@ -110,26 +112,16 @@ export default function VideoRequestWizard({
     }));
   };
 
-  const clearCurrentCardFields = () => {
-    setFieldValues((prev) => ({
-      ...prev,
-      [activeStep]: {},
-    }));
-  };
-
   // -----------------------------
   // Submit + Payment
   // -----------------------------
   const buildPayload = () => {
-    return Object.entries(fieldValues).reduce(
-      (acc, [cardIndex, cardData]) => {
-        Object.entries(cardData).forEach(([key, value]) => {
-          acc[`card_${cardIndex}_${key}`] = value;
-        });
-        return acc;
-      },
-      {} as Record<string, any>
-    );
+    return Object.entries(fieldValues).reduce((acc, [cardIndex, cardData]) => {
+      Object.entries(cardData).forEach(([key, value]) => {
+        acc[`card_${cardIndex}_${key}`] = value;
+      });
+      return acc;
+    }, {} as Record<string, any>);
   };
 
   const saveDraft = async () => {
@@ -141,35 +133,36 @@ export default function VideoRequestWizard({
     try {
       setPaying(true);
       const payload = buildPayload();
-      const requestId = searchParams?.get('requestId');
+      const requestId = searchParams?.get("requestId");
 
-      const res = await fetch(requestId ? "/api/e-video/requests" : "/api/e-video/requests", {
+      const res = await fetch("/api/e-video/requests", {
         method: requestId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...(requestId ? { id: Number(requestId) } : { template_id: template.id }),
+          ...(requestId
+            ? { id: Number(requestId) }
+            : { template_id: template.id }),
           user_id: user.uid,
           requester_name: user.name,
           requester_email: user.email || null,
           requester_phone: user.mobile || null,
           payload,
-          status: 'draft',
+          status: "draft",
         }),
       });
 
       const json = await res.json();
-      if (!json.success) throw new Error(json.error || 'Failed to save draft');
+      if (!json.success) throw new Error(json.error || "Failed to save draft");
 
-      toast.success('Draft saved successfully. Complete payment during submission.');
-      router.push('/my-videos');
+      toast.success("Draft saved successfully.");
+      router.push("/my-videos");
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to save draft');
+      toast.error(err?.message || "Failed to save draft");
     } finally {
       setPaying(false);
     }
   };
-
-  const handlePaymentAndSubmit = async () => {
+  const handleProceed = async () => {
     if (!user) {
       toast.error("Please login to continue");
       return;
@@ -179,97 +172,59 @@ export default function VideoRequestWizard({
       setPaying(true);
 
       const payload = buildPayload();
-      const requestId = searchParams?.get('requestId');
+      const requestId = searchParams?.get("requestId");
+      const isDev = process.env.NODE_ENV === "development";
 
-      console.log('📤 [VideoRequestWizard] Submitting with:', {
-        template_id: template.id,
-        user_id: user.uid,
-        requester_name: user.name,
-        cardCount: cards.length,
-        collectedCards: Object.keys(fieldValues).length,
-        totalFields: Object.keys(payload).length,
-        payload: payload,
+      // 1) Save/Update request as submitted/draft first
+      const res = await fetch("/api/e-video/requests", {
+        method: requestId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(requestId
+            ? { id: Number(requestId) }
+            : { template_id: template.id }),
+          user_id: user.uid,
+          requester_name: user.name,
+          requester_email: user.email || null,
+          requester_phone: user.mobile || null,
+          payload,
+          status: isPremium ? "submitted" : "submitted",
+        }),
       });
 
-      // ✅ FREE TEMPLATE - skip payment, set status to submitted immediately
-      const isDev = process.env.NODE_ENV === 'development';
-      
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || "Failed to save request");
       if (!isPremium || isDev) {
-        const createRes = await fetch(requestId ? "/api/e-video/requests" : "/api/e-video/requests", {
-          method: requestId ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...(requestId ? { id: Number(requestId) } : { template_id: template.id }),
-            user_id: user.uid,
-            requester_name: user.name,
-            requester_email: user.email || null,
-            requester_phone: user.mobile || null,
-            payload,
-            status: 'submitted',
-          }),
-        });
-
-        const createJson = await createRes.json();
-        if (!createJson.success) {
-          throw new Error(createJson.error || "Failed to submit request");
-        }
-
-        if (isDev && isPremium) {
-          toast.success(`Request submitted! (Dev mode: ₹${templatePrice} payment skipped)`);
-        } else {
-          toast.success("Request submitted successfully!");
-        }
+        toast.success(
+          isDev && isPremium
+            ? `Request submitted! (Dev mode: payment skipped)`
+            : "Request submitted successfully!"
+        );
         router.push("/my-videos");
         return;
       }
 
-      // ✅ PRODUCTION + PREMIUM - trigger Razorpay FIRST, then set status after payment
-      const rzp = new window.Razorpay({
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: Math.round(templatePrice * 100),
-        currency: "INR",
-        name: "Video Invitation",
-        description: template.title,
-        handler: async () => {
-          try {
-            // After payment succeeds, update status to submitted
-            const submitRes = await fetch(requestId ? "/api/e-video/requests" : "/api/e-video/requests", {
-              method: requestId ? "PUT" : "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                ...(requestId ? { id: Number(requestId) } : { template_id: template.id }),
-                user_id: user.uid,
-                requester_name: user.name,
-                requester_email: user.email || null,
-                requester_phone: user.mobile || null,
-                payload,
-                status: 'submitted',
-              }),
-            });
-
-            const submitJson = await submitRes.json();
-            if (!submitJson.success) {
-              throw new Error(submitJson.error || "Failed to update request status");
-            }
-
-            toast.success("Payment successful! Request submitted.");
-            router.push("/my-videos");
-          } catch (err: any) {
-            toast.error(err?.message || "Failed to update request after payment");
-            setPaying(false);
-          }
-        },
-        prefill: {
-          name: user.name,
-          email: user.email || "",
-          contact: user.mobile || "",
-        },
-        theme: { color: "#d18b47" },
+      // 3) Premium: create DB order server-side and redirect to payment page
+      // ✅ IMPORTANT: You need a server-side api that creates order from request/custom content
+      const orderRes = await fetch("/api/orders/from-video-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          request_id: json.data?.id || Number(requestId),
+        }),
       });
 
-      rzp.open();
+      const orderJson = await orderRes.json();
+      if (!orderJson.success) {
+        throw new Error(orderJson.error || "Failed to create order");
+      }
+
+      const orderId = orderJson.data.orderId;
+
+      router.push(`/payment?orderId=${orderId}`);
     } catch (err: any) {
-      toast.error(err?.message || "Submission failed");
+      toast.error(err?.message || "Failed to continue");
+    } finally {
       setPaying(false);
     }
   };
@@ -341,15 +296,6 @@ export default function VideoRequestWizard({
                 alt="Card preview"
               />
             )}
-
-            {isPremium && (
-              <div className="bg-white border rounded-xl p-4 text-center">
-                <p className="text-sm text-gray-600">Price</p>
-                <p className="text-2xl font-bold text-[#d18b47]">
-                  ₹{templatePrice}
-                </p>
-              </div>
-            )}
           </div>
 
           {/* RIGHT: Form */}
@@ -361,107 +307,101 @@ export default function VideoRequestWizard({
 
             <Stepper steps={steps} currentStep={activeStep} />
 
-            {!isReviewStep && activeCard && (
+            {!isPaymentStep && activeCard && (
               <div className="space-y-4">
                 {(activeCard.fields || []).map((f) => (
                   <div key={f.name}>
-                    <label className="block text-sm font-medium mb-1">
-                      {f.label}
-                    </label>
+                    <label className="block text-sm font-medium mb-1">{f.label}</label>
                     {renderField(f)}
                   </div>
                 ))}
               </div>
             )}
 
-            {isReviewStep && (
-              <div className="space-y-4 text-sm">
-                <div>
-                  <h3 className="font-bold mb-2">Your Information</h3>
-                  <p>
-                    <strong>Name:</strong> {user?.name}
-                  </p>
-                  {user?.email && (
-                    <p>
-                      <strong>Email:</strong> {user.email}
+            {isPaymentStep && (
+              <div className="rounded-2xl border bg-[#fff7ef] p-6 space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-lg font-bold text-[#7a3f10]">Payment</p>
+                    <p className="text-sm text-[#7a3f10]/80">
+                      {isPremium
+                        ? "Pay securely to submit your request."
+                        : "No payment required. Submit your request."}
                     </p>
-                  )}
-                  {user?.mobile && (
-                    <p>
-                      <strong>Phone:</strong> {user.mobile}
-                    </p>
+                  </div>
+
+                  {isPremium && (
+                    <span className="text-sm font-semibold px-3 py-1 rounded-full bg-white border text-[#d18b47]">
+                      ₹{templatePrice}
+                    </span>
                   )}
                 </div>
 
-                <div>
-                  <h3 className="font-bold mb-2">Collected Data</h3>
-                  <div className="bg-gray-50 p-3 rounded text-xs max-h-64 overflow-y-auto">
-                    {Object.keys(fieldValues).length === 0 ? (
-                      <p className="text-gray-500">No data collected yet</p>
-                    ) : (
-                      Object.entries(fieldValues).map(([cardIndex, cardData]) => (
-                        <div key={cardIndex} className="mb-3 pb-3 border-b">
-                          <p className="font-semibold">Card {parseInt(cardIndex) + 1}:</p>
-                          {Object.entries(cardData).length === 0 ? (
-                            <p className="text-gray-400 ml-2">No fields filled</p>
-                          ) : (
-                            Object.entries(cardData).map(([key, value]) => (
-                              <p key={key} className="ml-2">
-                                <strong>{key}:</strong> {String(value)}
-                              </p>
-                            ))
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={paying}
+                    onClick={saveDraft}
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                  >
+                    Save Draft
+                  </button>
+
+                  <button
+                    disabled={paying}
+                    onClick={handleProceed}
+                    className="px-6 py-2 rounded-lg bg-[#d18b47] text-white font-semibold shadow-md hover:opacity-95 disabled:opacity-60"
+                  >
+                    {isPremium ? "Proceed to Payment" : "Submit"}
+                  </button>
                 </div>
               </div>
             )}
-
-            {/* Navigation */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t">
               <button
-                onClick={() =>
-                  activeStep === 0
-                    ? router.back()
-                    : setActiveStep((s) => s - 1)
-                }
+                onClick={() => {
+                  if (activeStep === 0) router.back();
+                  else setActiveStep((s) => s - 1);
+                }}
                 className="px-4 py-2 border rounded-lg"
+                disabled={paying}
               >
                 Back
               </button>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={paying}
-                  onClick={saveDraft}
-                  className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
-                >
-                  Save Draft
-                </button>
+              {/* Right controls */}
+              {!isPaymentStep && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={paying}
+                    onClick={saveDraft}
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                  >
+                    Save Draft
+                  </button>
 
-              <button
-                disabled={paying}
-                onClick={() => {
-                  if (isReviewStep) {
-                    handlePaymentAndSubmit();
-                  } else {
-                    // Move to next step without clearing data
-                    setActiveStep((s) => s + 1);
-                  }
-                }}
-                className="px-6 py-2 rounded-lg bg-[#d18b47] text-white font-semibold"
-              >
-                {isReviewStep
-                  ? isPremium
-                    ? "Pay & Submit"
-                    : "Submit"
-                  : "Next"}
-              </button>
-              </div>
+                  <button
+                    disabled={paying}
+                    onClick={() => {
+                      if (isLastCard) {
+                        // ✅ go to payment step
+                        setActiveStep(cards.length);
+                      } else {
+                        setActiveStep((s) => s + 1);
+                      }
+                    }}
+                    className="px-6 py-2 rounded-lg bg-[#d18b47] text-white font-semibold"
+                  >
+                    {isLastCard ? "Continue" : "Next"}
+                  </button>
+                </div>
+              )}
+
+              {/* On payment step: buttons are inside payment card */}
+              {isPaymentStep && <div />}
             </div>
+
           </div>
         </div>
       </div>

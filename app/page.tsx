@@ -3,7 +3,7 @@ import HeroSection from '@/components/Home/Hero';
 import SmoothCarousel from '@/components/ui/SmoothCarousel';
 import { Template } from '@/lib/types';
 import { templateService, videoService } from '@/services';
-import { slugify as strSlugify } from '@/lib/utils';
+import { slugify as strSlugify, buildUrl } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import VideoCard from '@/components/Home/VideoCard';
 import { motion } from 'framer-motion';
@@ -16,16 +16,10 @@ interface VideoTemplate {
   preview_video_url: string;
   preview_thumbnail_url?: string;
   category_id?: number;
+  category_slug?: string | null;
+  subcategory_slug?: string | null;
   is_active: boolean;
   price?: number;
-}
-
-function slugify(text: string[] | null | undefined): string {
-  if (!text) return '';
-  return text
-    .filter(t => t) // Remove empty strings
-    .map(t => t.toString().toLowerCase().replace(/\s+/g, '-'))
-    .join('/');
 }
 export default function Home() {
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -85,7 +79,11 @@ export default function Home() {
         id: v.id,
         image: v.preview_thumbnail_url || '',
         title: v.title,
-        link: `/e-video/${v.slug}`,
+        link: buildUrl({
+          slug: v.slug,
+          category_slug: v.category_slug,
+          subcategory_slug: v.subcategory_slug,
+        }),
         price: (() => {
           if (v.price === null || typeof v.price === 'undefined') return 0;
           const parsed = Number(v.price);
@@ -127,6 +125,7 @@ export default function Home() {
                     image={item.image}
                     name={item.title || "Video Invitation"}
                     price={item.price}
+                    link={item.link}
                   />
                 ))}
               </div>

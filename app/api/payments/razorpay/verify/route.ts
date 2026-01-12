@@ -1,122 +1,102 @@
-import { NextRequest, NextResponse } from 'next/server';
-import Razorpay from 'razorpay';
-import crypto from 'crypto';
-import pool from '@/lib/db';
-import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
+import pool from "@/lib/db";
+import { RowDataPacket } from "mysql2";
 
-const { RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET } = process.env;
-
-function getClient() {
-  if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
-    throw new Error('Razorpay keys are not configured');
-  }
-
-  return new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET });
-}
+const { RAZORPAY_KEY_SECRET } = process.env;
 
 export async function POST(req: NextRequest) {
   const connection = await pool.getConnection();
+
   try {
     const body = await req.json();
-    const { order_id, payment_id, signature, user_custom_content_id } = body || {};
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body || {};
 
-    if (!order_id || !payment_id || !signature || !user_custom_content_id) {
-      return NextResponse.json(
-        { success: false, error: 'order_id, payment_id, signature, and user_custom_content_id are required' },
-        { status: 400 }
-      );
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return NextResponse.json({ success: false, error: "Missing fields" }, { status: 400 });
     }
 
     if (!RAZORPAY_KEY_SECRET) {
-      throw new Error('Razorpay secret is not configured');
+      return NextResponse.json({ success: false, error: "Server misconfigured" }, { status: 500 });
     }
 
-    const [orderRows] = await connection.query<RowDataPacket[]>(
-      `SELECT o.id, o.status, o.total as amount, p.id as payment_id, p.status as payment_status
-       FROM orders o
-       LEFT JOIN payments p ON p.order_id = o.id
-       WHERE o.order_number = ? AND o.id = ?
-       LIMIT 1`,
-      [order_id, order_id]
-    );
+    // ✅ Signature verify
+    const expected = crypto
+      .createHmac("sha256", RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
 
-    if (!orderRows.length) {
-      return NextResponse.json(
-        { success: false, error: 'Order not found' },
-        { status: 404 }
-      );
-    }
-
-    const orderRecord = orderRows[0] as any;
-
-    if (orderRecord.status === 'paid' || orderRecord.payment_status === 'success') {
-      return NextResponse.json({ success: true, data: { payment_status: 'paid' } });
-    }
-
-    const expectedSignature = crypto
-      .createHmac('sha256', RAZORPAY_KEY_SECRET)
-      .update(`${order_id}|${payment_id}`)
-      .digest('hex');
-
-    if (expectedSignature !== signature) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid payment signature' },
-        { status: 400 }
-      );
-    }
-
-    let verifiedAmount: number | null = orderRecord.amount ?? null;
-
-    try {
-      const client = getClient();
-      const order = await client.orders.fetch(order_id);
-      verifiedAmount = (order.amount ? Number(order.amount) : null) ?? verifiedAmount;
-    } catch (fetchError) {
-      console.warn('Razorpay order fetch failed, skipping amount verification', fetchError);
+    if (expected !== razorpay_signature) {
+      return NextResponse.json({ success: false, error: "Invalid signature" }, { status: 400 });
     }
 
     await connection.beginTransaction();
 
-    try {
-      // Update order status
-      const [updateResult] = await connection.query<ResultSetHeader>(
-        `UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?`,
-        ['paid', orderRecord.id]
-      );
-
-      // Update or create payment record
-      await connection.query(
-        `UPDATE payments SET status = ?, provider_reference = ?, amount = ? WHERE order_id = ?`,
-        ['success', payment_id, verifiedAmount, orderRecord.id]
-      );
-
-      // Update user custom content status
-      await connection.query(
-        `UPDATE user_custom_content SET status = ?, updated_at = NOW() WHERE id = ?`,
-        ['paid', user_custom_content_id]
-      );
-
-      await connection.commit();
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          payment_status: 'paid',
-          payment_id,
-          order_id,
-          amount: verifiedAmount,
-        },
-      });
-    } catch (txError) {
-      await connection.rollback();
-      throw txError;
-    }
-  } catch (error) {
-    console.error('Error verifying Razorpay payment:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to verify payment' },
-      { status: 500 }
+    // ✅ Find payment row
+    const [pRows] = await connection.query<RowDataPacket[]>(
+      `
+      SELECT id, order_id, status
+      FROM payments
+      WHERE provider='razorpay'
+        AND provider_reference = ?
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      [razorpay_order_id]
     );
+
+    if (!pRows.length) {
+      await connection.rollback();
+      return NextResponse.json({ success: false, error: "Payment record not found" }, { status: 404 });
+    }
+
+    const pay = pRows[0] as any;
+
+    // idempotent
+    if (pay.status === "success") {
+      await connection.commit();
+      return NextResponse.json({ success: true });
+    }
+
+    // ✅ Update payment success
+    await connection.query(
+      `
+      UPDATE payments
+      SET status='success'
+      WHERE id = ?
+      `,
+      [pay.id]
+    );
+
+    // ✅ Update order paid
+    await connection.query(
+      `
+      UPDATE orders
+      SET status='paid'
+      WHERE id = ?
+      `,
+      [pay.order_id]
+    );
+
+    // ✅ If this order belongs to a customization -> update it paid
+    await connection.query(
+      `
+      UPDATE user_custom_content ucc
+      SET ucc.status='paid'
+      WHERE ucc.order_id = ?
+      `,
+      [pay.order_id]
+    );
+
+    await connection.commit();
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error("RAZORPAY_VERIFY_ERROR:", err);
+    try {
+      await connection.rollback();
+    } catch {}
+    return NextResponse.json({ success: false, error: "Verification failed" }, { status: 500 });
   } finally {
     connection.release();
   }

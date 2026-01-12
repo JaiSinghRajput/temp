@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
     const categoryData = (catRows.length > 0 ? catRows[0] : {}) as any;
 
     // Generate unique public slug for this card
-    const publicSlug = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const publicSlug = `card-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
     // Add public_slug to customized data
     const dataWithSlug = {

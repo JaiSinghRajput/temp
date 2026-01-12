@@ -68,7 +68,6 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
         <div className="relative">
           <div
             className="sticky top-24 rounded-3xl bg-[#f3e4d6] shadow-sm"
-            style={{ aspectRatio: '3 / 5' }}
           >
             <Carousel
               opts={{ loop: true }}

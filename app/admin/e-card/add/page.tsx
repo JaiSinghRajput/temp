@@ -11,7 +11,7 @@ export default function CreateTemplatePage() {
       onSave={async (payload) => {
         try {
           console.log('Saving template with payload:', payload);
-          const response = await fetch('/api/templates', {
+          const response = await fetch('/api/e-cards', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),

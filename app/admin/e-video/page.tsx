@@ -97,18 +97,18 @@ export default function AdminEVideoListPage() {
                 >
                   {/* Video preview */}
                   <div className="relative bg-black flex justify-center border-b">
-                    <div className="w-full max-w-55 aspect-9/16 max-h-90">
+                    <div className="w-full h-auto aspect-auto">
                       <video
                         src={tmpl.preview_video_url}
                         poster={poster}
                         controls
                         muted
                         playsInline
+                        autoPlay
                         preload="metadata"
-                        className="w-full h-full object-contain bg-black"
+                        className="w-full h-full object-fit bg-black"
                       />
                     </div>
-
                     <div className="absolute bottom-2 left-2 text-xs px-2 py-1 rounded-full bg-black/70 text-white">
                       {fieldCount} fields
                     </div>

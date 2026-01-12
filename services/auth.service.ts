@@ -2,7 +2,6 @@ import axiosInstance from '@/lib/axios';
 
 // Helper to safely extract error message from axios error
 const getErrorMessage = (error: any): { success: false; message: string } => {
-  // If error is already a properly formatted object
   if (error?.success === false && error?.message) {
     return error;
   }
@@ -77,7 +76,6 @@ export const authService = {
       });
       return response.data;
     } catch (error: any) {
-      // 401 errors are expected when user is not authenticated - don't treat as error
       if (error?.status === 401 || error?.message?.toLowerCase().includes('token')) {
         return { success: false, message: error?.message || 'Not authenticated' };
       }

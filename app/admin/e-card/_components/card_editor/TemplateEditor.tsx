@@ -24,6 +24,18 @@ import { slugify } from '@/lib/utils';
 
 const DEFAULT_TEMPLATE_IMAGE = '';
 
+const getScaledTextboxSize = (textbox: Textbox, fallbackWidth = 250) => {
+  const scaleX = textbox.scaleX ?? 1;
+  const scaleY = textbox.scaleY ?? 1;
+  const widthBase = textbox.width ?? fallbackWidth;
+  const heightBase = textbox.height ?? 0;
+
+  return {
+    width: widthBase * scaleX,
+    height: heightBase * scaleY,
+  };
+};
+
 type EditorMode = 'create' | 'edit';
 
 interface TemplateEditorProps {
@@ -48,29 +60,35 @@ const CoordinateUtils = {
       topPercent: (position.top / originalHeight) * 100,
       widthPercent: (position.width / originalWidth) * 100,
       heightPercent: position.height ? (position.height / originalHeight) * 100 : undefined,
-      fontSizeRatio: position.fontSize && position.width ? position.fontSize / position.width : undefined,
     };
   },
 
   relativeToAbsolute: (position: any, canvasWidth: number, canvasHeight: number) => {
     const hasRelative = position.leftPercent !== undefined && position.topPercent !== undefined;
+    const scaleX = position.scaleX ?? 1;
+    const scaleY = position.scaleY ?? 1;
 
     if (hasRelative) {
-      const newWidth = (position.widthPercent / 100) * canvasWidth;
-      const newHeight = position.heightPercent ? (position.heightPercent / 100) * canvasHeight : undefined;
-      
-      // Calculate font size maintaining the ratio to width
-      const newFontSize = position.fontSizeRatio
-        ? Math.max(8, Math.round(newWidth * position.fontSizeRatio))
-        : position.fontSize;
+      const scaledWidth = (position.widthPercent / 100) * canvasWidth;
+      const scaledHeight = position.heightPercent ? (position.heightPercent / 100) * canvasHeight : undefined;
+
+      // Derive base dimensions so applying scale reconstitutes the rendered size
+      const baseWidth = position.width ?? (scaleX !== 0 ? scaledWidth / scaleX : scaledWidth);
+      const baseHeight = position.height ?? (scaledHeight && scaleY !== 0 ? scaledHeight / scaleY : scaledHeight);
+
+      const newFontSize = position.fontSize ?? (position.fontSizeRatio
+        ? Math.max(8, Math.round(scaledWidth * position.fontSizeRatio))
+        : undefined);
 
       return {
         ...position,
         left: (position.leftPercent / 100) * canvasWidth,
         top: (position.topPercent / 100) * canvasHeight,
-        width: newWidth,
-        height: newHeight,
+        width: baseWidth,
+        height: baseHeight,
         fontSize: newFontSize,
+        scaleX,
+        scaleY,
       };
     }
 
@@ -85,6 +103,8 @@ const CoordinateUtils = {
         top: position.top * scaleY,
         width: position.width * scaleX,
         fontSize: position.fontSize ? Math.max(8, Math.round(position.fontSize * scaleX)) : position.fontSize,
+        scaleX: position.scaleX ?? 1,
+        scaleY: position.scaleY ?? 1,
       };
     }
 
@@ -97,13 +117,20 @@ const CoordinateUtils = {
       return textData; // Already in new format
     }
 
+    const scaleX = textData.scaleX ?? 1;
+    const scaleY = textData.scaleY ?? 1;
+
+    const renderedWidth = textData.width !== undefined ? textData.width * scaleX : undefined;
+    const renderedHeight = textData.height !== undefined ? textData.height * scaleY : undefined;
+
     // Convert old format to new format
     return {
       ...textData,
       leftPercent: (textData.left / originalWidth) * 100,
       topPercent: (textData.top / originalHeight) * 100,
-      widthPercent: (textData.width / originalWidth) * 100,
-      fontSizeRatio: textData.fontSize ? textData.fontSize / textData.width : undefined,
+      widthPercent: renderedWidth !== undefined ? (renderedWidth / originalWidth) * 100 : undefined,
+      heightPercent: renderedHeight !== undefined ? (renderedHeight / originalHeight) * 100 : undefined,
+      fontSizeRatio: undefined,
     };
   },
 };
@@ -253,13 +280,14 @@ const TextElementUtils = {
       const t = obj as Textbox;
       t.setCoords();
       
-      const textboxWidth = t.width || 250;
+      const { width: renderedWidth, height: renderedHeight } = getScaledTextboxSize(t, 250);
       
       const position = CoordinateUtils.absoluteToRelative(
-        { 
-          left: t.left, 
-          top: t.top, 
-          width: textboxWidth,
+        {
+          left: t.left,
+          top: t.top,
+          width: renderedWidth,
+          height: renderedHeight,
           fontSize: t.fontSize
         },
         canvasWidth,
@@ -275,14 +303,16 @@ const TextElementUtils = {
         leftPercent: position.leftPercent,
         topPercent: position.topPercent,
         fontSize: t.fontSize,
-        fontSizeRatio: position.fontSizeRatio,
+        fontSizeRatio: undefined,
         fontWeight: t.fontWeight,
         fontFamily: t.fontFamily,
         fill: t.fill,
-        width: textboxWidth,
+        width: t.width,
         widthPercent: position.widthPercent,
-        scaleX: 1,
-        scaleY: 1,
+        height: t.height,
+        heightPercent: position.heightPercent,
+        scaleX: t.scaleX ?? 1,
+        scaleY: t.scaleY ?? 1,
         textAlign: t.textAlign,
         angle: t.angle || 0,
         locked: (t as any).isLocked || false,
@@ -306,9 +336,10 @@ const TextElementUtils = {
       fontFamily: textData.fontFamily || 'Arial',
       fontWeight: textData.fontWeight || 'normal',
       fill: textData.fill || '#000000',
-      width: scaledPosition.width || 250,
-      scaleX: 1,
-      scaleY: 1,
+      width: scaledPosition.width || textData.width || 250,
+      height: scaledPosition.height || textData.height,
+      scaleX: textData.scaleX ?? scaledPosition.scaleX ?? 1,
+      scaleY: textData.scaleY ?? scaledPosition.scaleY ?? 1,
       textAlign: textData.textAlign || 'center',
       angle: textData.angle || 0,
       originX: 'center',
@@ -553,44 +584,15 @@ export default function TemplateEditor({
       const target = e.target;
       if (!(target instanceof Textbox)) return;
 
-      if (!(target as any)._prevWidth) {
-        (target as any)._prevWidth = target.width;
-        (target as any)._prevHeight = target.height;
-        (target as any)._prevFontSize = target.fontSize;
-        return;
-      }
+      const { width: currentWidth, height: currentHeight } = getScaledTextboxSize(target, 250);
 
-      const prevWidth = (target as any)._prevWidth;
-      const prevHeight = (target as any)._prevHeight;
-      const currentWidth = target.width;
-      const currentHeight = target.height;
-      const currentFontSize = target.fontSize || 40;
-
-      const widthChanged = Math.abs(currentWidth - prevWidth) > 1;
-      const heightChanged = Math.abs(currentHeight - prevHeight) > 1;
-
-      if (widthChanged && heightChanged) {
-        const prevArea = prevWidth * prevHeight;
-        const currentArea = currentWidth * currentHeight;
-        const areaScaleFactor = currentArea / prevArea;
-        const newFontSize = Math.max(8, Math.round(currentFontSize * Math.sqrt(areaScaleFactor)));
-
-        if (newFontSize !== currentFontSize) {
-          target.set({ fontSize: newFontSize, dirty: true, objectCaching: false } as any);
-          (target as any)._clearCache?.();
-          target.initDimensions();
-          target.setCoords();
-          canvas.requestRenderAll();
-          setFontSize(newFontSize);
-          setActive({ ...target } as Textbox);
-        }
-
-        (target as any)._prevFontSize = newFontSize;
-      }
-
+      // Persist current dimensions/scales without touching font size
       (target as any)._prevWidth = currentWidth;
       (target as any)._prevHeight = currentHeight;
+
+      (target as any)._clearCache?.();
       target.setCoords();
+      canvas.requestRenderAll();
     };
 
     canvas.on('selection:created', syncSidebar);
@@ -790,10 +792,6 @@ export default function TemplateEditor({
     const updateObj: any = { [key]: value, dirty: true, objectCaching: false };
 
     if (key === 'fontSize') {
-      const currentWidth = (target.width || 250) as number;
-      const currentFontSize = (target.fontSize || 40) as number;
-      const scaleFactor = value / currentFontSize;
-      updateObj.width = currentWidth * scaleFactor;
       setFontSize(value);
     } else if (key === 'text') {
       setTextValue(value);
@@ -925,41 +923,6 @@ export default function TemplateEditor({
       setIsUploadingImage(false);
     }
   };
-  const absoluteToRelative = (position: any, originalWidth: number, originalHeight: number) => {
-    if (!originalWidth || !originalHeight) return position;
-    return {
-      ...position,
-      leftPercent: (position.left / originalWidth) * 100,
-      topPercent: (position.top / originalHeight) * 100,
-      widthPercent: (position.width / originalWidth) * 100,
-      fontSizeRatio: position.fontSize ? position.fontSize / position.width : undefined,
-    };
-  };
-
-  // Convert relative coordinates back to absolute based on current canvas size
-  const relativeToAbsolute = (position: any, canvasWidth: number, canvasHeight: number) => {
-    const hasRelative = position.leftPercent !== undefined && position.topPercent !== undefined;
-
-    if (hasRelative) {
-      // New format with percentage - scale to new canvas size
-      const newWidth = (position.widthPercent / 100) * canvasWidth;
-      const newFontSize = position.fontSizeRatio
-        ? Math.max(8, newWidth * position.fontSizeRatio)
-        : position.fontSize;
-
-      return {
-        ...position,
-        left: (position.leftPercent / 100) * canvasWidth,
-        top: (position.topPercent / 100) * canvasHeight,
-        width: newWidth,
-        fontSize: newFontSize,
-      };
-    }
-
-    // Old format without percentages - DON'T SCALE, use as-is
-    // This preserves existing templates on their original canvas size
-    return position;
-  };
   const handlePreviewUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1034,12 +997,13 @@ export default function TemplateEditor({
       const textbox = obj as Textbox;
       textbox.setCoords();
 
-      const textboxWidth = textbox.width || 250;
+      const { width: renderedWidth, height: renderedHeight } = getScaledTextboxSize(textbox, 250);
 
       const position = CoordinateUtils.absoluteToRelative({
         left: textbox.left,
         top: textbox.top,
-        width: textboxWidth,
+        width: renderedWidth,
+        height: renderedHeight,
         fontSize: textbox.fontSize
       }, canvasWidth, canvasHeight);
 
@@ -1052,14 +1016,16 @@ export default function TemplateEditor({
         leftPercent: position.leftPercent,
         topPercent: position.topPercent,
         fontSize: textbox.fontSize,
-        fontSizeRatio: position.fontSizeRatio,
+        fontSizeRatio: undefined,
         fontWeight: textbox.fontWeight,
         fontFamily: textbox.fontFamily,
         fill: textbox.fill,
-        width: textboxWidth,
+        width: textbox.width,
         widthPercent: position.widthPercent,
-        scaleX: 1,
-        scaleY: 1,
+        height: textbox.height,
+        heightPercent: position.heightPercent,
+        scaleX: textbox.scaleX ?? 1,
+        scaleY: textbox.scaleY ?? 1,
         textAlign: textbox.textAlign,
         angle: textbox.angle || 0,
         locked: (textbox as any).isLocked || false,
@@ -1182,12 +1148,13 @@ export default function TemplateEditor({
         const textbox = obj as Textbox;
         textbox.setCoords();
 
-        const textboxWidth = textbox.width || 250;
+        const { width: renderedWidth, height: renderedHeight } = getScaledTextboxSize(textbox, 250);
 
         const position = CoordinateUtils.absoluteToRelative({
           left: textbox.left,
           top: textbox.top,
-          width: textboxWidth,
+          width: renderedWidth,
+          height: renderedHeight,
           fontSize: textbox.fontSize
         }, currentCanvasWidth, currentCanvasHeight);
 
@@ -1200,14 +1167,16 @@ export default function TemplateEditor({
           leftPercent: position.leftPercent,
           topPercent: position.topPercent,
           fontSize: textbox.fontSize,
-          fontSizeRatio: position.fontSizeRatio,
+          fontSizeRatio: undefined,
           fontWeight: textbox.fontWeight,
           fontFamily: textbox.fontFamily,
           fill: textbox.fill,
-          width: textboxWidth,
+          width: textbox.width,
           widthPercent: position.widthPercent,
-          scaleX: 1,
-          scaleY: 1,
+          height: textbox.height,
+          heightPercent: position.heightPercent,
+          scaleX: textbox.scaleX ?? 1,
+          scaleY: textbox.scaleY ?? 1,
           textAlign: textbox.textAlign,
           angle: textbox.angle || 0,
           locked: (textbox as any).isLocked || false,
@@ -1275,8 +1244,9 @@ export default function TemplateEditor({
                 fontFamily: element.fontFamily,
                 fill: element.fill,
                 width: scaledPosition.width || element.width || 250,
-                scaleX: 1,
-                scaleY: 1,
+                height: scaledPosition.height || element.height,
+                scaleX: element.scaleX ?? scaledPosition.scaleX ?? 1,
+                scaleY: element.scaleY ?? scaledPosition.scaleY ?? 1,
                 textAlign: element.textAlign,
                 angle: element.angle || 0,
                 originX: 'center',
@@ -1318,12 +1288,13 @@ export default function TemplateEditor({
         const t = obj as Textbox;
         t.setCoords();
 
-        const textboxWidth = t.width || 250;
+        const { width: renderedWidth, height: renderedHeight } = getScaledTextboxSize(t, 250);
 
         const position = CoordinateUtils.absoluteToRelative({
           left: t.left,
           top: t.top,
-          width: textboxWidth,
+          width: renderedWidth,
+          height: renderedHeight,
           fontSize: t.fontSize
         }, canvasWidth, canvasHeight);
 
@@ -1336,14 +1307,16 @@ export default function TemplateEditor({
           leftPercent: position.leftPercent,
           topPercent: position.topPercent,
           fontSize: t.fontSize,
-          fontSizeRatio: position.fontSizeRatio,
+          fontSizeRatio: undefined,
           fontWeight: t.fontWeight,
           fontFamily: t.fontFamily,
           fill: t.fill,
-          width: textboxWidth,
+          width: t.width,
+          height: t.height,
           widthPercent: position.widthPercent,
-          scaleX: 1,
-          scaleY: 1,
+          heightPercent: position.heightPercent,
+          scaleX: t.scaleX ?? 1,
+          scaleY: t.scaleY ?? 1,
           textAlign: t.textAlign,
           angle: t.angle || 0,
           locked: (t as any).isLocked || false,
@@ -1438,7 +1411,7 @@ export default function TemplateEditor({
       if (onSave) {
         await onSave(payload);
       } else if (mode === 'edit' && templateId) {
-        const res = await fetch(`/api/templates/${templateId}`, {
+        const res = await fetch(`/api/e-cards/${templateId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -1446,7 +1419,7 @@ export default function TemplateEditor({
         if (!res.ok) throw new Error('Failed to save template');
         router.push('/admin/e-card');
       } else if (mode === 'create') {
-        const res = await fetch('/api/templates', {
+        const res = await fetch('/api/e-cards', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -1493,7 +1466,7 @@ export default function TemplateEditor({
           </h1>
           <button
             onClick={() => onCancel?.() || router.push('/admin/e-card')}
-            className="text-sm text-gray-600 hover:text-gray-900"
+            className="text-sm text-gray-600 hover:text-gray-900 hover:border-2 p-1 cursor-pointer"
           >
             ✕
           </button>
@@ -1655,7 +1628,7 @@ export default function TemplateEditor({
                 </label>
 
                 {previewImageUrl && (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => {
                       setPreviewImageUrl(null);
@@ -1664,7 +1637,7 @@ export default function TemplateEditor({
                     className="h-10 px-3 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold border border-gray-200 hover:bg-gray-200"
                   >
                     Use generated
-                  </button>
+                  </Button>
                 )}
               </div>
               {previewImageUrl && (
@@ -1690,10 +1663,10 @@ export default function TemplateEditor({
                       : 'bg-white border border-gray-200 hover:bg-gray-100'
                       }`}
                   >
-                    <button onClick={() => switchPage(idx)} className="text-sm font-semibold flex-1 text-left">
+                    <button onClick={() => switchPage(idx)} className="text-sm font-semibold flex-1 text-left cursor-pointer">
                       Page {idx + 1}
                     </button>
-                    <button onClick={() => deletePage(idx)} className="text-red-500 text-xs font-bold">
+                    <button onClick={() => deletePage(idx)} className="text-red-500 text-xs font-bold cursor-pointer">
                       ✕
                     </button>
                   </div>
@@ -1718,7 +1691,7 @@ export default function TemplateEditor({
                     )}
                   </label>
                   {pages[currentPageIndex]?.previewImageUrl && (
-                    <button
+                    <Button
                       type="button"
                       onClick={() => {
                         const updated = [...pages];
@@ -1732,7 +1705,7 @@ export default function TemplateEditor({
                       className="h-10 px-3 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold border border-gray-200 hover:bg-gray-200"
                     >
                       Use generated
-                    </button>
+                    </Button>
                   )}
                 </div>
                 {pages[currentPageIndex]?.previewImageUrl && (
@@ -1747,26 +1720,26 @@ export default function TemplateEditor({
             </div>
           )}
 
-          <button
+          <Button
             onClick={addPage}
             disabled={isUploadingImage}
             className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold"
           >
             + Add Page
-          </button>
+          </Button>
 
-          <button
+          <Button
             onClick={handleSave}
             disabled={isSaving || !(templateName || '').trim()}
             className="w-full h-12 bg-primary hover:bg-primary/90 disabled:bg-gray-300 text-white rounded-lg text-sm font-bold"
           >
             {isSaving ? 'Saving...' : mode === 'edit' ? '💾 Update' : '💾 Save'}
-          </button>
+          </Button>
         </div>
 
-        <button onClick={addText} className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg">
+        <Button onClick={addText} className="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg">
           + Add Text Layer
-        </button>
+        </Button>
 
         {active ? (
           <div className="space-y-4">
@@ -1855,20 +1828,20 @@ export default function TemplateEditor({
 
                 <div>
                   <label className="text-xs mb-1 block">Bold</label>
-                  <button
+                  <Button
                     onClick={toggleBold}
                     className={`w-full h-10 rounded-lg font-bold ${bold ? 'bg-gray-900 text-white' : 'bg-gray-100 border'
                       }`}
                   >
                     B
-                  </button>
+                  </Button>
                 </div>
               </div>
 
               <div>
                 <label className="text-xs mb-1 block">Position</label>
                 <div className="grid grid-cols-3 gap-2">
-                  <button
+                  <Button
                     onClick={() => {
                       if (active && fabricCanvas.current) {
                         active.set({ left: 50, originX: 'left' });
@@ -1879,8 +1852,8 @@ export default function TemplateEditor({
                     className="h-10 rounded-lg bg-gray-100 border"
                   >
                     ⬅
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={() => {
                       if (active && fabricCanvas.current) {
                         active.set({ left: fabricCanvas.current.width / 2, originX: 'center' });
@@ -1888,11 +1861,11 @@ export default function TemplateEditor({
                         fabricCanvas.current.requestRenderAll();
                       }
                     }}
-                    className="h-10 rounded-lg bg-gray-100 border"
+                    className="h-10 rounded-lg bg-gray-100 border text-black"
                   >
                     ↔
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={() => {
                       if (active && fabricCanvas.current) {
                         active.set({ left: fabricCanvas.current.width - 50, originX: 'right' });
@@ -1903,13 +1876,13 @@ export default function TemplateEditor({
                     className="h-10 rounded-lg bg-gray-100 border"
                   >
                     ➡
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
 
             <div className="bg-red-50 p-4 rounded-xl border border-red-200">
-              <button
+              <Button
                 onClick={() => {
                   if (active) {
                     const isLocked = !(active as any).isLocked;
@@ -1921,7 +1894,7 @@ export default function TemplateEditor({
                   }`}
               >
                 {isTextLocked ? '🔒 Locked' : '🔓 Unlocked'}
-              </button>
+              </Button>
               <p className="text-xs text-center mt-2">{isTextLocked ? 'Users cannot edit' : 'Users can edit'}</p>
             </div>
             <details>
@@ -1932,7 +1905,7 @@ export default function TemplateEditor({
                 <Button className="w-20" type="submit" onClick={handleAddFont}>Add Font</Button>
               </div>
             </details>
-            <button
+            <Button
               onClick={() => {
                 fabricCanvas.current?.remove(active);
                 fabricCanvas.current?.discardActiveObject();
@@ -1942,7 +1915,7 @@ export default function TemplateEditor({
               className="w-full py-3 text-red-500 border rounded-xl hover:bg-red-50 font-bold"
             >
               Delete Layer
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-400 border-2 border-dashed rounded-2xl p-6">

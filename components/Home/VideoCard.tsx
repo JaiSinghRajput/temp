@@ -1,30 +1,31 @@
 'use client';
 
 import { ShoppingCartCheckout } from '@mui/icons-material';
-
+import Link from 'next/link';
 type TemplateCardProps = {
   image: string;
   name: string;
   price: number;
-  onAddToCart?: () => void;
+  link?: string;
 };
 
 export default function VideoCard({
   image,
   name,
   price,
-  onAddToCart,
+  link
 }: TemplateCardProps) {
   return (
     <div className="w-70 bg-white rounded-xs overflow-hidden shadow-sm border border-gray-200">
-      
       {/* Image */}
       <div className="w-full aspect-3/5 bg-gray-100">
-        <img
-          src={image}
-          alt={name}
-          className="w-full h-full object-cover"
-        />
+        <Link href={link || '#'} target="_parent" rel="noopener noreferrer">
+          <img
+            src={image}
+            alt={name}
+            className="w-full h-full object-cover"
+          />
+        </Link>
       </div>
 
       {/* Bottom Info */}
@@ -37,20 +38,6 @@ export default function VideoCard({
             ₹{price.toFixed(2)}
           </p>
         </div>
-
-        <button
-          onClick={onAddToCart}
-          className="
-            h-9 w-9
-            rounded-full
-            flex items-center justify-center
-            text-gray-700
-            hover:bg-gray-100
-            transition
-          "
-        >
-          <ShoppingCartCheckout fontSize="small" />
-        </button>
       </div>
     </div>
   );

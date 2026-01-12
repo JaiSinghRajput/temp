@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, type ChangeEvent } from 'react';
+import React, { useState, useEffect, useRef, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import axiosInstance from '@/lib/axios';
 import { AdminHeader } from '@/components/admin/admin-header';
@@ -11,7 +11,7 @@ import { CardDraft } from './types';
 import { createEmptyCard, createEmptyField } from './utils';
 import { VideoCategory, VideoSubcategory } from '@/lib/types';
 import { MAX_IMAGE_MB, MAX_VIDEO_MB } from '@/lib/constants';
-
+import { LinkIcon, UploadIcon } from '@/components/ui/Icon';
 type EditorMode = 'create' | 'edit';
 
 interface VideoEditorProps {
@@ -20,6 +20,169 @@ interface VideoEditorProps {
     templateId?: string;
     onSave?: (payload: any) => Promise<void>;
     onCancel?: () => void;
+}
+
+const PRIMARY = '#d66e4b';
+
+type UploadMode = 'upload' | 'url';
+
+function UploaderBox({
+    title,
+    subtitle,
+    accept,
+    uploading,
+    value,
+    onValue,
+    onFile,
+    preview,
+    allowClear = true,
+}: {
+    title: string;
+    subtitle?: string;
+    accept: string;
+    uploading?: boolean;
+    value: string;
+    onValue: (v: string) => void;
+    onFile: (e: ChangeEvent<HTMLInputElement>) => void;
+    preview?: React.ReactNode;
+    allowClear?: boolean;
+}) {
+    const fileRef = useRef<HTMLInputElement | null>(null);
+    const [mode, setMode] = useState<UploadMode>('upload');
+
+    useEffect(() => {
+        if (value?.trim()) setMode('url');
+    }, [value]);
+
+    return (
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+                    {subtitle ? <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p> : null}
+                </div>
+
+                <div className="flex items-center gap-3">
+                    {uploading ? <span className="text-xs text-gray-500">Uploading…</span> : null}
+
+                    {allowClear && value ? (
+                        <button
+                            type="button"
+                            onClick={() => onValue('')}
+                            className="text-xs font-semibold text-gray-500 hover:text-gray-900"
+                        >
+                            Clear
+                        </button>
+                    ) : null}
+                </div>
+            </div>
+
+            {/* toggle */}
+            <div className="rounded-2xl border bg-white p-2 shadow-sm" style={{ borderColor: 'rgba(0,0,0,0.10)' }}>
+                <div className="grid grid-cols-2 gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setMode('upload')}
+                        className="rounded-xl border px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2 transition"
+                        style={{
+                            borderColor: mode === 'upload' ? PRIMARY : 'rgba(0,0,0,0.10)',
+                            backgroundColor: mode === 'upload' ? 'rgba(214,110,75,0.12)' : 'white',
+                            color: mode === 'upload' ? PRIMARY : '#111827',
+                        }}
+                    >
+                        <UploadIcon className="w-4 h-4" />
+                        Upload
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setMode('url')}
+                        className="rounded-xl border px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2 transition"
+                        style={{
+                            borderColor: mode === 'url' ? PRIMARY : 'rgba(0,0,0,0.10)',
+                            backgroundColor: mode === 'url' ? 'rgba(214,110,75,0.12)' : 'white',
+                            color: mode === 'url' ? PRIMARY : '#111827',
+                        }}
+                    >
+                        <LinkIcon className="w-4 h-4" />
+                        URL
+                    </button>
+                </div>
+            </div>
+
+            {/* hidden file input */}
+            <input ref={fileRef} type="file" accept={accept} className="hidden" onChange={onFile} />
+
+            {/* upload mode */}
+            {mode === 'upload' && (
+                <div
+                    onClick={() => fileRef.current?.click()}
+                    className="cursor-pointer rounded-2xl border bg-white p-4 transition hover:shadow-md"
+                    style={{
+                        borderColor: 'rgba(0,0,0,0.10)',
+                        boxShadow: uploading ? `0 0 0 4px rgba(214,110,75,0.18)` : undefined,
+                    }}
+                >
+                    <div className="flex items-center gap-3">
+                        <div
+                            className="h-10 w-10 rounded-xl flex items-center justify-center"
+                            style={{ backgroundColor: 'rgba(214,110,75,0.12)', color: PRIMARY }}
+                        >
+                            <UploadIcon />
+                        </div>
+
+                        <div className="flex-1">
+                            <p className="text-sm font-semibold text-gray-900">{uploading ? 'Uploading...' : 'Click to upload'}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">Choose a file from your system</p>
+                        </div>
+
+                        <span
+                            className="rounded-xl px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
+                            style={{ backgroundColor: uploading ? 'rgba(0,0,0,0.35)' : PRIMARY }}
+                        >
+                            {uploading ? 'Wait' : 'Browse'}
+                        </span>
+                    </div>
+
+                    {uploading && (
+                        <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                            <div className="h-full w-2/3 animate-pulse rounded-full" style={{ backgroundColor: PRIMARY }} />
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* url mode */}
+            {mode === 'url' && (
+                <div className="space-y-2">
+                    <label className="text-xs font-semibold text-gray-600">Paste URL</label>
+                    <input
+                        value={value}
+                        onChange={(e) => onValue(e.target.value)}
+                        className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:outline-none"
+                        style={{ borderColor: 'rgba(0,0,0,0.10)' }}
+                        onFocus={(e) => {
+                            e.currentTarget.style.borderColor = PRIMARY;
+                            e.currentTarget.style.boxShadow = `0 0 0 4px rgba(214,110,75,0.20)`;
+                        }}
+                        onBlur={(e) => {
+                            e.currentTarget.style.borderColor = 'rgba(0,0,0,0.10)';
+                            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.06)';
+                        }}
+                        placeholder="https://..."
+                    />
+                </div>
+            )}
+
+            {/* preview */}
+            {value && preview ? (
+                <div className="rounded-2xl border bg-white p-3 shadow-sm" style={{ borderColor: 'rgba(0,0,0,0.10)' }}>
+                    <div className="text-xs font-semibold text-gray-600 mb-2">Preview</div>
+                    {preview}
+                </div>
+            ) : null}
+        </div>
+    );
 }
 
 export default function VideoEditor({
@@ -135,9 +298,7 @@ export default function VideoEditor({
     const handleAddField = (cardId: string) => {
         setCards((prev) =>
             prev.map((c) =>
-                c.id === cardId
-                    ? { ...c, fields: [...c.fields, createEmptyField(c.fields.length)] }
-                    : c
+                c.id === cardId ? { ...c, fields: [...c.fields, createEmptyField(c.fields.length)] } : c
             )
         );
     };
@@ -157,9 +318,7 @@ export default function VideoEditor({
 
     const handleRemoveField = (cardId: string, index: number) => {
         setCards((prev) =>
-            prev.map((c) =>
-                c.id === cardId ? { ...c, fields: c.fields.filter((_, i) => i !== index) } : c
-            )
+            prev.map((c) => (c.id === cardId ? { ...c, fields: c.fields.filter((_, i) => i !== index) } : c))
         );
     };
 
@@ -167,10 +326,13 @@ export default function VideoEditor({
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Check file size before uploading
         const maxVideoBytes = MAX_VIDEO_MB * 1024 * 1024;
         if (file.size > maxVideoBytes) {
-            setError(`Video file too large. Max ${MAX_VIDEO_MB}MB allowed. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+            setError(
+                `Video file too large. Max ${MAX_VIDEO_MB}MB allowed. Your file is ${(file.size / 1024 / 1024).toFixed(
+                    2
+                )}MB`
+            );
             return;
         }
 
@@ -178,11 +340,13 @@ export default function VideoEditor({
         setError(null);
         try {
             const res = await uploadToCloudinary(file);
+
+            // ✅ ONLY set video
             setPreviewVideoUrl(res.secureUrl);
             setPreviewVideoPublicId(res.publicId || null);
-            if (!previewThumbUrl && res.thumbnailUrl) {
-                setPreviewThumbUrl(res.thumbnailUrl);
-            }
+
+            // ❌ DO NOT set thumbnail here
+            // setPreviewThumbUrl(...)
         } catch (err: any) {
             console.error('Video upload error:', err);
             setError(err?.message || 'Video upload failed');
@@ -191,14 +355,18 @@ export default function VideoEditor({
         }
     };
 
+
     const handleThumbUpload = async (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Check file size before uploading
         const maxImageBytes = MAX_IMAGE_MB * 1024 * 1024;
         if (file.size > maxImageBytes) {
-            setError(`Image file too large. Max ${MAX_IMAGE_MB}MB allowed. Your file is ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+            setError(
+                `Image file too large. Max ${MAX_IMAGE_MB}MB allowed. Your file is ${(file.size / 1024 / 1024).toFixed(
+                    2
+                )}MB`
+            );
             return;
         }
 
@@ -221,6 +389,7 @@ export default function VideoEditor({
             setError('Title and preview video are required');
             return;
         }
+
         if (!cards.length) {
             setError('Add at least one card with its fields');
             return;
@@ -327,80 +496,63 @@ export default function VideoEditor({
 
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
                 {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-md px-4 py-3">
-                        {error}
+                    <div
+                        className="rounded-2xl border px-4 py-3 text-sm shadow-sm"
+                        style={{
+                            borderColor: 'rgba(239,68,68,0.35)',
+                            backgroundColor: 'rgba(239,68,68,0.08)',
+                            color: '#b91c1c',
+                        }}
+                    >
+                        <div className="font-semibold">Something went wrong</div>
+                        <div className="text-xs mt-1">{error}</div>
                     </div>
                 )}
 
+                {/* top 3 cards */}
                 <section className="grid gap-4 md:grid-cols-3">
-                    <div className="md:col-span-1 bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-4">
-                        <div className="flex items-center justify-between max-w-xl">
-                            <h2 className="text-sm font-semibold text-gray-900">Preview Video</h2>
-                            {uploadingVideo && (
-                                <span className="text-xs text-gray-500">Uploading…</span>
-                            )}
-                        </div>
-                        <div className="space-y-2">
-                            <input
-                                type="file"
-                                accept="video/*"
-                                onChange={handlePreviewVideoUpload}
-                                className="text-sm"
+                    <UploaderBox
+                        title="Preview Video"
+                        subtitle={`Max size: ${MAX_VIDEO_MB}MB`}
+                        accept="video/*"
+                        uploading={uploadingVideo}
+                        value={previewVideoUrl}
+                        onValue={setPreviewVideoUrl}
+                        onFile={handlePreviewVideoUpload}
+                        preview={
+                            <div className="w-full border rounded-xl overflow-hidden bg-black">
+                                <video src={previewVideoUrl} controls className="w-full object-contain" />
+                            </div>
+                        }
+                    />
+
+                    <UploaderBox
+                        title="Preview Thumbnail"
+                        subtitle={`Max size: ${MAX_IMAGE_MB}MB`}
+                        accept="image/*"
+                        uploading={uploadingThumb}
+                        value={previewThumbUrl}
+                        onValue={setPreviewThumbUrl}
+                        onFile={handleThumbUpload}
+                        preview={
+                            <img
+                                src={previewThumbUrl}
+                                alt="Thumbnail preview"
+                                className="w-full rounded-xl border object-cover"
+                                style={{ borderColor: 'rgba(0,0,0,0.08)' }}
                             />
-                            <input
-                                value={previewVideoUrl}
-                                onChange={(e) => setPreviewVideoUrl(e.target.value)}
-                                className="w-full rounded-md border px-3 py-2 text-sm"
-                                placeholder="Or paste video URL"
-                            />
+                        }
+                    />
+
+                    {/* details */}
+                    <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-4">
+                        <div>
+                            <h2 className="text-sm font-semibold text-gray-900">Template Details</h2>
+                            <p className="text-xs text-gray-500 mt-0.5">Categorize and configure pricing and description.</p>
                         </div>
-                        {previewVideoUrl && (
-                            <div className="w-full max-w-xs border rounded-md overflow-hidden bg-black mx-auto">
-                                <video
-                                    src={previewVideoUrl}
-                                    controls
-                                    className="w-full object-contain"
-                                />
-                            </div>
 
-                        )}
-                    </div>
-
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-3 md:col-span-1">
                         <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <label className="text-sm font-semibold text-gray-900">Preview Thumbnail</label>
-                                {uploadingThumb && (
-                                    <span className="text-xs text-gray-500">Uploading…</span>
-                                )}
-                            </div>
-                            <div className='space-y-2'>
-
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={handleThumbUpload}
-                                    className="text-sm"
-                                />
-                                <input
-                                    value={previewThumbUrl}
-                                    onChange={(e) => setPreviewThumbUrl(e.target.value)}
-                                    className="w-full rounded-md border px-3 py-2 text-sm"
-                                    placeholder="Or paste image URL"
-                                />
-                            </div>
-                            {previewThumbUrl && (
-                                <img
-                                    src={previewThumbUrl}
-                                    alt="Thumbnail preview"
-                                    className="w-full rounded-lg border"
-                                />
-                            )}
-                        </div>
-                    </div>
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-3 md:col-span-1">
-                        <div className="space-y-2">
-                            <label className="text-sm text-gray-700">Category</label>
+                            <label className="text-xs font-semibold text-gray-600">Category</label>
                             <select
                                 value={categoryId ?? ''}
                                 onChange={(e) => {
@@ -408,77 +560,92 @@ export default function VideoEditor({
                                     setCategoryId(val);
                                     setSubcategoryId(null);
                                 }}
-                                className="w-full rounded-md border px-3 py-2 text-sm bg-white"
+                                className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:outline-none"
+                                style={{ borderColor: 'rgba(0,0,0,0.10)' }}
                             >
                                 <option value="">Select category</option>
                                 {categories.map((cat) => (
-                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                    <option key={cat.id} value={cat.id}>
+                                        {cat.name}
+                                    </option>
                                 ))}
                             </select>
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm text-gray-700">Subcategory</label>
+                            <label className="text-xs font-semibold text-gray-600">Subcategory</label>
                             <select
                                 value={subcategoryId ?? ''}
                                 onChange={(e) => setSubcategoryId(e.target.value ? Number(e.target.value) : null)}
-                                className="w-full rounded-md border px-3 py-2 text-sm bg-white"
+                                className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:outline-none disabled:opacity-60"
+                                style={{ borderColor: 'rgba(0,0,0,0.10)' }}
                                 disabled={!categoryId}
                             >
                                 <option value="">Select subcategory</option>
                                 {subcategories
                                     .filter((s) => !categoryId || s.category_id === categoryId)
                                     .map((sub) => (
-                                        <option key={sub.id} value={sub.id}>{sub.name}</option>
+                                        <option key={sub.id} value={sub.id}>
+                                            {sub.name}
+                                        </option>
                                     ))}
                             </select>
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm text-gray-700">Title *</label>
+                            <label className="text-xs font-semibold text-gray-600">
+                                Title <span style={{ color: PRIMARY }}>*</span>
+                            </label>
                             <input
                                 value={title}
                                 onChange={(e) => setTitle(e.target.value)}
-                                className="w-full rounded-md border px-3 py-2 text-sm"
+                                className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:outline-none"
+                                style={{ borderColor: 'rgba(0,0,0,0.10)' }}
                                 placeholder="Wedding invite"
                             />
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm text-gray-700">Price</label>
+                            <label className="text-xs font-semibold text-gray-600">Price</label>
                             <input
                                 type="number"
                                 min="0"
                                 step="0.01"
                                 value={price}
                                 onChange={(e) => setPrice(e.target.value)}
-                                className="w-full rounded-md border px-3 py-2 text-sm"
+                                className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:outline-none"
+                                style={{ borderColor: 'rgba(0,0,0,0.10)' }}
                                 placeholder="Ex: 499"
                             />
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm text-gray-700">Description</label>
+                            <label className="text-xs font-semibold text-gray-600">Description</label>
                             <textarea
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
                                 rows={4}
-                                className="w-full rounded-md border px-3 py-2 text-sm"
+                                className="w-full rounded-xl border bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm focus:outline-none resize-none"
+                                style={{ borderColor: 'rgba(0,0,0,0.10)' }}
+                                placeholder="Describe this template..."
                             />
                         </div>
                     </div>
                 </section>
 
-                <section className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                {/* cards & fields */}
+                <section className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
                     <div className="flex items-center justify-between px-6 py-4 border-b">
                         <div>
                             <h2 className="text-sm font-semibold text-gray-900">Cards & Fields</h2>
                             <p className="text-xs text-gray-500">Each card has its own preview image and inputs.</p>
                         </div>
+
                         {cards.length > 1 && (
                             <button
                                 onClick={() => handleRemoveCard(activeCard?.id || '')}
-                                className="text-xs text-red-600 hover:underline"
+                                className="rounded-xl border px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 active:scale-[0.98]"
+                                style={{ borderColor: 'rgba(239,68,68,0.35)' }}
                             >
                                 Remove current card
                             </button>
@@ -486,12 +653,7 @@ export default function VideoEditor({
                     </div>
 
                     <div className="flex">
-                        <CardSidebar
-                            cards={cards}
-                            activeCardId={activeCard?.id || ''}
-                            onSelect={setActiveCardId}
-                            onAdd={handleAddCard}
-                        />
+                        <CardSidebar cards={cards} activeCardId={activeCard?.id || ''} onSelect={setActiveCardId} onAdd={handleAddCard} />
 
                         <div className="flex-1 p-6">
                             {activeCard ? (
@@ -509,19 +671,26 @@ export default function VideoEditor({
                     </div>
                 </section>
 
+                {/* footer buttons */}
                 <div className="flex gap-3 justify-end">
                     <button
                         onClick={handleCancel}
-                        className="px-6 py-2 rounded-md border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50"
+                        className="px-6 py-2.5 rounded-xl border text-gray-700 text-sm font-semibold hover:bg-gray-50 active:scale-[0.98]"
+                        style={{ borderColor: 'rgba(0,0,0,0.15)' }}
                     >
                         Cancel
                     </button>
+
                     <button
                         onClick={handleSubmit}
                         disabled={submitting}
-                        className="px-6 py-2 rounded-md bg-primary text-white text-sm font-semibold disabled:opacity-60"
+                        className="px-6 py-2.5 rounded-xl text-white text-sm font-semibold shadow-sm disabled:opacity-60 active:scale-[0.98]"
+                        style={{
+                            backgroundColor: PRIMARY,
+                            boxShadow: '0 10px 20px rgba(214,110,75,0.25)',
+                        }}
                     >
-                        {submitting ? 'Saving…' : 'Save Template'}
+                        {submitting ? 'Saving…' : mode === 'create' ? 'Create Template' : 'Save Changes'}
                     </button>
                 </div>
             </div>

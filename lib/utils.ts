@@ -13,3 +13,15 @@ export function slugify(input: string) {
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-');
 }
+
+export function buildUrl(video: {
+  slug: string;
+  category_slug?: string | null;
+  subcategory_slug?: string | null;
+}): string {
+  const parts = ["/e-videos"];
+  if (video.category_slug) parts.push(video.category_slug);
+  if (video.subcategory_slug) parts.push(video.subcategory_slug);
+  parts.push(video.slug);
+  return parts.join("/");
+}

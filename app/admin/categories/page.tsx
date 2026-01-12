@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { categoryService } from '@/services';
+import { Button } from "@/components/ui/button";
 
 interface Category {
   id: number;
@@ -71,12 +72,12 @@ export default function CategoriesPage() {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-semibold">Categories</h1>
-        <button
+        <Button
           onClick={() => setShowModal(true)}
           className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800"
         >
           Add Category
-        </button>
+        </Button>
       </div>
 
       {/* Table */}

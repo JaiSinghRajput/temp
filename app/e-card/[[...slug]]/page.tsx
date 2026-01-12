@@ -193,7 +193,7 @@ export default function ECardHomePage() {
             if (categoryId) qs.append('category_id', String(categoryId));
             if (subcategoryId) qs.append('subcategory_id', String(subcategoryId));
 
-            const templatesUrl = qs.toString() ? `/api/templates?${qs.toString()}` : '/api/templates';
+            const templatesUrl = qs.toString() ? `/api/e-cards?${qs.toString()}` : '/api/e-cards';
             const cardsRes = await fetch(templatesUrl);
             const cards = await cardsRes.json();
 
@@ -237,7 +237,7 @@ export default function ECardHomePage() {
             setError('');
             const normalizedSlug = stripNumericSuffix(slug);
             // Fetch all templates and find by slug
-            const res = await fetch('/api/templates');
+            const res = await fetch('/api/e-cards');
             const json = await res.json();
             if (json.success && Array.isArray(json.data)) {
                 const template = json.data.find((t: Template) => {
