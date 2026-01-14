@@ -92,6 +92,7 @@ export interface Product {
   sku?: string;
   name?: string;
   type: 'physical' | 'digital';
+  slug: string;
   price: number;
   sale_price?: number;
   is_active: boolean;

@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 import pool from '@/lib/db';
-import { VideoInviteCard, VideoInviteField, VideoInviteTemplate } from '@/lib/types';
-
-const safeParse = <T>(value: any, fallback: T): T => {
-  if (value === null || value === undefined) return fallback;
-  if (typeof value === 'object') return value as T;
-  try {
-    return JSON.parse(String(value)) as T;
-  } catch (err) {
-    console.error('Failed to parse JSON field:', err);
-    return fallback;
-  }
-};
+import {VideoInviteField } from '@/lib/types';
 
 const slugify = (input: string) =>
   input

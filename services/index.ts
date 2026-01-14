@@ -7,3 +7,5 @@ export { userEcardService } from './user-ecard.service';
 export { paymentService } from './payment.service';
 export { fontService } from './font.service';
 export { uploadService } from './upload.service';
+export { userProductsService, productsService } from './products/products.service';
+export { productImagesService , type ProductImage } from './products/product-image.service';

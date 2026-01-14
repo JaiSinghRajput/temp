@@ -24,6 +24,8 @@ import {
   TextFields as FontsIcon,
   VideoCameraBack as EVideoIcon,
   ColorLens as ColorsIcon,
+  Checkroom as DressesIcon,
+  CardGiftcard as GiftsIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -106,6 +108,22 @@ export function AdminSidebar() {
           },
         ],
       },
+      {
+        key: 'dresses',
+        title: 'Dresses',
+        items: [
+          { key: 'dresses-all', name: 'All Dresses', href: '/admin/dresses' },
+          { key: 'dresses-create', name: 'Create Dress', href: '/admin/dresses/add' },
+        ],
+      },
+      {
+        key: 'gifts',
+        title: 'Gifts',
+        items: [
+          { key: 'gifts-all', name: 'All Gifts', href: '/admin/gifts' },
+          { key: 'gifts-create', name: 'Create Gift', href: '/admin/gifts/add' },
+        ],
+      },
       { key: 'fonts', title: 'Fonts', href: '/admin/fonts' },
       { key: 'colors', title: 'Colors', href: '/admin/colors' },
     ];
@@ -139,6 +157,10 @@ export function AdminSidebar() {
         return <ColorsIcon />;
       case 'e-video':
         return <EVideoIcon />;
+      case 'dresses':
+        return <DressesIcon />;
+      case 'gifts':
+        return <GiftsIcon />;
       default:
         return null;
     }
