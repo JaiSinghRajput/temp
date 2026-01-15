@@ -5,7 +5,6 @@ import { TextElement, Template } from '@/lib/types';
 import {
   loadTextOnlyCanvas,
   getUpdatedTextContent,
-  loadCustomFonts,
   loadFontsFromElements,
 } from '@/lib/text-only-canvas-renderer';
 import { useCanvasTextAnimation } from '@/hooks/useCanvasTextAnimation';
@@ -118,9 +117,20 @@ export default function TextEditor({
       height,
       selection: false,
       stopContextMenu: true,
-
     });
     fabricCanvasRef.current = canvas;
+
+    // 🔒 Enable scroll on mobile while preserving click-to-edit
+    canvas.selection = false;
+    canvas.allowTouchScrolling = true;
+    
+    // Override Fabric's touch handling to allow native scrolling
+    const lowerCanvasEl = canvas.lowerCanvasEl;
+    const upperCanvasEl = canvas.upperCanvasEl;
+    
+    // Prevent Fabric from blocking scroll
+    if (lowerCanvasEl) lowerCanvasEl.style.touchAction = 'pan-y';
+    if (upperCanvasEl) upperCanvasEl.style.touchAction = 'pan-y';
 
     // Pre-load fonts from text elements BEFORE rendering canvas
     const fontLoadingPromise = loadFontsFromElements(textElements, canvasData?.customFonts)
@@ -166,8 +176,22 @@ export default function TextEditor({
           // Animate all text elements on load with fadeIn effect
           const textboxArray = Array.from(textObjects.values());
           if (textboxArray.length > 0) {
-            animateAllTexts(textboxArray, 'fadeIn', 800, 100);
+            animateAllTexts(textboxArray, 'bounce', 800, 100);
           }
+
+          // 📱 Re-enable click-to-edit after canvas loads
+          // This ensures text selection works while scrolling is still enabled
+          canvas.on('mouse:down', (e) => {
+            if (e.target instanceof Textbox) {
+              // Temporarily disable scroll while editing
+              if (upperCanvasEl) upperCanvasEl.style.touchAction = 'none';
+            }
+          });
+
+          canvas.on('selection:cleared', () => {
+            // Re-enable scroll after editing
+            if (upperCanvasEl) upperCanvasEl.style.touchAction = 'pan-y';
+          });
         })
         .catch((err) => {
           console.error('Error loading canvas:', err);

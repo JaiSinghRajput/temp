@@ -1,7 +1,6 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { authService } from '@/services';
 
 interface User {
@@ -26,22 +25,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
-  const router = useRouter();
 
   const refreshUser = async () => {
     try {
-      setLoading(true);
+      if (!initialized) setLoading(true);
+
       const data = await authService.verifyToken();
 
-      if (data.success && data.user) {
+      if (data?.success && data.user) {
         setUser(data.user);
       } else {
-        // Token invalid/expired or user not authenticated - clear user state
+        // Token invalid or expired
         setUser(null);
       }
     } catch (error: any) {
-      // On unexpected errors, clear user if not initialized yet
-      if (!initialized) setUser(null);
+      setUser(null);
     } finally {
       setInitialized(true);
       setLoading(false);
@@ -51,11 +49,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       await authService.logout();
+    } catch {
+    } finally {
       setUser(null);
-      router.push('/login');
-    } catch (error) {
-      setUser(null);
-      router.push('/login');
     }
   };
 
@@ -64,7 +60,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, setUser, refreshUser, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        setUser,
+        refreshUser,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -72,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;

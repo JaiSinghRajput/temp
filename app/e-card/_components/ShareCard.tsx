@@ -97,6 +97,16 @@ export default function ShareCard({ card }: ShareCardProps) {
 
     fabricCanvasRef.current = canvas;
 
+    /* 🔥 ADD THESE LINES */
+    canvas.skipTargetFind = true;
+    canvas.selection = false;
+
+    // Let browser handle touch scrolling
+    canvas.upperCanvasEl.style.pointerEvents = 'none';
+    canvas.lowerCanvasEl.style.pointerEvents = 'none';
+
+    fabricCanvasRef.current = canvas;
+
     // Load fonts used by the card (works for both stored customFonts and CDN lookups)
     loadFontsFromElements(textElements, currentCanvasData?.customFonts)
       .catch((err) => {
@@ -191,7 +201,7 @@ export default function ShareCard({ card }: ShareCardProps) {
         const dataUrl = fabricCanvas.toDataURL({
           format: 'png',
           quality: 1,
-          multiplier: 1,
+          multiplier: 3,
         });
 
         pageImages.push(dataUrl);
@@ -272,8 +282,17 @@ export default function ShareCard({ card }: ShareCardProps) {
           <p className="text-red-700 text-sm">{error}</p>
         </div>
       ) : (
-        <div ref={containerRef} className="flex items-center justify-center p-6">
-          <canvas ref={canvasRef} className="block" />
+        <div
+          ref={containerRef}
+          className="relative overflow-auto"
+          style={{
+            touchAction: 'pan-y',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          <div className="pointer-events-none">
+            <canvas ref={canvasRef} />
+          </div>
         </div>
       )}
 

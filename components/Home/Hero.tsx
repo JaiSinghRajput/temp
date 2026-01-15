@@ -70,7 +70,7 @@ export default function HeroSection({className}: {className?: string}) {
                         effect="fade"
                         onSwiper={(swiper) => (swiperRef.current = swiper)}
                         onSlideChange={(swiper) => setActiveIndex(swiper.activeIndex)}
-                        className="w-105 h-105 lg:w-120 lg:h-120 rounded-xl overflow-hidden shadow-lg"
+                        className="w-90 h-105 lg:w-120 lg:h-120 rounded-xl overflow-hidden shadow-lg"
                     >
                         {images.map((img, i) => (
                             <SwiperSlide key={i}>

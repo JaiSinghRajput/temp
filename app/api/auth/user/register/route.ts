@@ -85,8 +85,7 @@ export async function POST(req: Request) {
 
         // Generate and send OTP
         try {
-          // const generatedOtp = await sendOtp(phone);
-          const generatedOtp = 111111;
+          const generatedOtp = await sendOtp(phone);
 
           if (!generatedOtp) {
             // Delete the temporary user if OTP fails

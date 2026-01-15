@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Template } from '@/lib/types';
+import { useAuth } from '@/contexts/AuthContext';
 
 import { Carousel, CarouselContent, CarouselItem } from '@/components/ui/carousel';
 import type { CarouselApi } from '@/components/ui/carousel';
@@ -14,11 +16,21 @@ interface TemplateDetailProps {
   onRetry: () => void;
 }
 
-export function DetailView({ template, loading, error, onRetry }: TemplateDetailProps) {
+export function DetailView({
+  template,
+  loading,
+  error,
+  onRetry,
+}: TemplateDetailProps) {
+  const { user } = useAuth();
+  const pathname = usePathname();
+
   const [api, setApi] = useState<CarouselApi | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
 
-  // ✅ SAFE pages (doesn't crash while template undefined)
+  // ----------------------------------
+  // Pages (safe even when template undefined)
+  // ----------------------------------
   const pages = useMemo(() => {
     if (!template) return [];
 
@@ -35,7 +47,9 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
         ];
   }, [template]);
 
-  // ✅ HOOK MUST ALWAYS RUN (even while loading/error)
+  // ----------------------------------
+  // Carousel sync
+  // ----------------------------------
   useEffect(() => {
     if (!api) return;
 
@@ -54,7 +68,9 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
     api?.scrollTo(idx);
   };
 
-  // ✅ Now early returns are safe
+  // ----------------------------------
+  // Loading / Error
+  // ----------------------------------
   if (loading) {
     return (
       <div className="flex flex-col items-center py-20">
@@ -78,21 +94,30 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
     );
   }
 
+  // ----------------------------------
+  // Auth-aware Customize link
+  // ----------------------------------
+  const customizePath = `/e-card/customize/${template.id}`;
+  const loginHref = `/login?next=${encodeURIComponent(customizePath)}`;
+  const customizeHref = user ? customizePath : loginHref;
+
+  // ----------------------------------
+  // Render
+  // ----------------------------------
   return (
     <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-      {/* PREVIEW SECTION EXACT STRUCTURE (same mobile + desktop) */}
       <div className="flex flex-col items-center gap-4">
-        {/* PAGE BUTTONS */}
+        {/* Page buttons */}
         {pages.length > 1 && (
           <div className="flex flex-wrap justify-center gap-3 pt-2">
             {pages.map((_, idx) => (
               <button
                 key={idx}
                 onClick={() => handlePageClick(idx)}
-                className={`px-5 py-2 rounded-full text-sm font-medium border transition-all cursor-pointer shadow-sm
+                className={`px-5 py-2 rounded-full text-sm font-medium border transition-all shadow-sm
                   ${
                     idx === currentPage
-                      ? 'bg-blue-50 text-black shadow-sm border-[#e9ad99]/60'
+                      ? 'bg-blue-50 text-black border-[#e9ad99]/60'
                       : 'bg-transparent text-black/80 hover:border-[#e9ad99]/60'
                   }
                 `}
@@ -103,41 +128,47 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
           </div>
         )}
 
-        {/* PREVIEW BOX */}
+        {/* Preview */}
         <div className="w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl">
-            <div className="rounded-xs overflow-hidden bg-black shadow-sm">
-              <Carousel opts={{ loop: false }} setApi={setApi}>
-                <CarouselContent>
-                  {pages.map((page: any, idx) => (
-                    <CarouselItem key={idx}>
-                      {page.previewImageUrl || page.imageUrl ? (
-                        <img
-                          src={page.previewImageUrl || page.imageUrl}
-                          alt={`${template.title} page ${idx + 1}`}
-                          className="w-full h-auto object-contain"
-                        />
-                      ) : (
-                        <div className="aspect-3/4 w-full flex items-center justify-center text-gray-400">
-                          No preview
-                        </div>
-                      )}
-                    </CarouselItem>
-                  ))}
-                </CarouselContent>
-              </Carousel>
-            </div>
+          <div className="rounded-xs overflow-hidden bg-black shadow-sm">
+            <Carousel opts={{ loop: false }} setApi={setApi}>
+              <CarouselContent>
+                {pages.map((page: any, idx) => (
+                  <CarouselItem key={idx}>
+                    {page.previewImageUrl || page.imageUrl ? (
+                      <img
+                        src={page.previewImageUrl || page.imageUrl}
+                        alt={`${template.title} page ${idx + 1}`}
+                        className="w-full h-auto object-contain"
+                      />
+                    ) : (
+                      <div className="aspect-3/4 w-full flex items-center justify-center text-gray-400">
+                        No preview
+                      </div>
+                    )}
+                  </CarouselItem>
+                ))}
+              </CarouselContent>
+            </Carousel>
+          </div>
         </div>
       </div>
 
-      {/* DETAILS BELOW PREVIEW */}
+      {/* CTA */}
       <div className="mt-10 flex flex-col items-center text-center">
-          <Link
-            href={`/e-card/customize/${template.id}`}
-            className="w-full px-6 py-2.5 rounded-xl bg-[#d18b47] text-white font-semibold text-center hover:bg-[#c07c3c]"
-          >
-            Customize Card
-          </Link>
-        </div>
+        <Link
+          href={customizeHref}
+          className="w-full px-6 py-2.5 rounded-xl bg-[#d18b47] text-white font-semibold hover:bg-[#c07c3c]"
+        >
+          Customize Card
+        </Link>
+
+        {!user && (
+          <p className="mt-3 text-sm text-gray-600">
+            Login or register to customize this card
+          </p>
+        )}
+      </div>
     </div>
   );
 }

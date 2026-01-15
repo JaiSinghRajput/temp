@@ -4,9 +4,8 @@ import axios from 'axios';
 const getBaseURL = () => {
   if (typeof window === 'undefined') {
     // Server-side
-    return process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    return process.env.NEXT_PUBLIC_BASE_URL;
   }
-  // Client-side - use relative URLs so cookies work properly
   return '';
 };
 
@@ -16,7 +15,7 @@ const axiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true, // CRITICAL: sends/receives cookies with every request
+  withCredentials: true,
 });
 
 // Request interceptor
@@ -29,7 +28,6 @@ axiosInstance.interceptors.request.use(
   }
 );
 
-// Response interceptor
 axiosInstance.interceptors.response.use(
   (response) => {
     return response;
@@ -38,7 +36,6 @@ axiosInstance.interceptors.response.use(
     const status = error.response?.status;
     const url = error.config?.url || '';
 
-    // For the token verification endpoint, a 401 simply means unauthenticated; return a resolved response
     if (status === 401 && url.includes('/api/auth/verify')) {
       return Promise.resolve({
         data: { success: false, message: 'Not authenticated' },
@@ -49,7 +46,6 @@ axiosInstance.interceptors.response.use(
       });
     }
 
-    // Extract error data properly
     if (error.response?.data) {
       const errorData = {
         ...error.response.data,
@@ -58,7 +54,7 @@ axiosInstance.interceptors.response.use(
       return Promise.reject(errorData);
     }
     
-    // For network errors or other issues
+
     return Promise.reject({
       success: false,
       message: error.message || 'An error occurred',

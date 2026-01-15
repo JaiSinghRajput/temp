@@ -1,10 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  // Allow large file uploads (500MB)
   serverExternalPackages: ['cloudinary'],
-  // Configure server to handle larger bodies
   httpAgentOptions: {
     keepAlive: true,
   },

@@ -1,6 +1,7 @@
 'use client';
+
 import { useState, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,12 +12,12 @@ import { OtpInput } from '@/components/ui/otp-input';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ProgressSteps } from '@/components/ui/progress-steps';
 import PageHeader from '@/components/layout/PageHeader';
-import { useSearchParams } from 'next/navigation';
 
 function UserRegisterContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { refreshUser } = useAuth();
+
   const [step, setStep] = useState(1);
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -25,6 +26,10 @@ function UserRegisterContent() {
   const [otp, setOtp] = useState('');
   const [tempUserId, setTempUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // 🔐 SAFE next handling (shared logic)
+  const next = searchParams.get('next');
+  const safeNext = next && next.startsWith('/') ? next : '/';
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,14 +49,13 @@ function UserRegisterContent() {
     } else {
       toast.error(data.message || 'Failed to send OTP');
     }
+
     setLoading(false);
   };
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const next = searchParams.get('next');
-    const safeNext = next && next.startsWith('/') ? next : '/';
 
     const data = await authService.verifyRegistrationOtp({
       otp,
@@ -60,15 +64,13 @@ function UserRegisterContent() {
 
     if (data.success) {
       toast.success('Registration successful!');
-      // Refresh user state from cookie
       await new Promise(resolve => setTimeout(resolve, 500));
       await refreshUser();
-      setTimeout(() => {
-        router.push(safeNext);
-      }, 300);
+      router.replace(safeNext);
     } else {
       toast.error(data.message || 'OTP verification failed');
     }
+
     setLoading(false);
   };
 
@@ -77,11 +79,12 @@ function UserRegisterContent() {
       <PageHeader
         title="Register"
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Register" },
+          { label: 'Home', href: '/' },
+          { label: 'Register' },
         ]}
         backgroundImage="/images/login-bg.jpg"
       />
+
       <AuthLayout
         title="Create Account"
         subtitle="Join eCard Shop to get started"
@@ -162,11 +165,7 @@ function UserRegisterContent() {
                 </button>
               </div>
 
-              <OtpInput
-                value={otp}
-                onChange={setOtp}
-                colorScheme="green"
-              />
+              <OtpInput value={otp} onChange={setOtp} colorScheme="green" />
 
               <LoadingButton
                 type="submit"
@@ -184,16 +183,19 @@ function UserRegisterContent() {
                 disabled={loading}
                 className="w-full text-green-600 hover:text-green-700 text-sm font-medium"
               >
-                Didn't receive OTP? Resend
+                Didn&apos;t receive OTP? Resend
               </button>
             </form>
           )}
 
-          {/* Footer */}
+          {/* 🔥 FIXED: Preserve ?next= when switching to Login */}
           <div className="mt-6 text-center border-t pt-6">
             <p className="text-gray-600 text-sm">
               Already have an account?{' '}
-              <Link href="/login" className="text-green-600 hover:text-green-700 font-medium">
+              <Link
+                href={`/login?next=${encodeURIComponent(safeNext)}`}
+                className="text-green-600 hover:text-green-700 font-medium"
+              >
                 Login here
               </Link>
             </p>

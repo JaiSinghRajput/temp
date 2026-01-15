@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, Suspense } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,23 +12,25 @@ import { OtpInput } from '@/components/ui/otp-input';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ProgressSteps } from '@/components/ui/progress-steps';
 import PageHeader from '@/components/layout/PageHeader';
-import { useSearchParams } from 'next/navigation';
 
 function UserLoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { refreshUser } = useAuth();
+
   const [step, setStep] = useState(1);
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+
+  // 🔐 SAFE next handling (used everywhere)
+  const next = searchParams.get('next');
+  const safeNext = next && next.startsWith('/') ? next : '/';
 
   const handleRequestOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
 
     const data = await authService.requestLoginOtp(phone);
 
@@ -39,28 +41,28 @@ function UserLoginContent() {
     } else {
       toast.error(data.message || 'Failed to send OTP');
     }
+
     setLoading(false);
   };
 
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const next = searchParams.get('next');
-    const safeNext = next && next.startsWith('/') ? next : '/';
 
-    const data = await authService.verifyLoginOtp({ otp, uid: userId || '' });
+    const data = await authService.verifyLoginOtp({
+      otp,
+      uid: userId || '',
+    });
 
     if (data.success) {
       toast.success('Login successful!');
-      // Refresh user state from cookie
       await new Promise(resolve => setTimeout(resolve, 500));
       await refreshUser();
-      setTimeout(() => {
-        router.push(safeNext);
-      }, 300);
+      router.replace(safeNext);
     } else {
       toast.error(data.message || 'Invalid OTP');
     }
+
     setLoading(false);
   };
 
@@ -69,17 +71,19 @@ function UserLoginContent() {
       <PageHeader
         title="Login"
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Login" },
+          { label: 'Home', href: '/' },
+          { label: 'Login' },
         ]}
         backgroundImage="/images/login-bg.jpg"
       />
+
       <AuthLayout
         title="User Login"
         subtitle="Login using your mobile number"
         gradient="green"
       >
         <ProgressSteps steps={2} currentStep={step} />
+
         {step === 1 && (
           <form onSubmit={handleRequestOTP} className="space-y-5">
             <Input
@@ -95,6 +99,7 @@ function UserLoginContent() {
             </LoadingButton>
           </form>
         )}
+
         {step === 2 && (
           <form onSubmit={handleVerifyOTP} className="space-y-5">
             <OtpInput value={otp} onChange={setOtp} />
@@ -103,9 +108,14 @@ function UserLoginContent() {
             </LoadingButton>
           </form>
         )}
+
+        {/* 🔥 FIXED: Preserve ?next= when switching to Register */}
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Don't have an account?{' '}
-          <Link href="/register" className="font-semibold text-primary hover:underline">
+          Don&apos;t have an account?{' '}
+          <Link
+            href={`/register?next=${encodeURIComponent(safeNext)}`}
+            className="font-semibold text-primary hover:underline"
+          >
             Register
           </Link>
         </p>
