@@ -42,8 +42,6 @@ function PreviewPageInner() {
 			console.error("Failed to load draft from sessionStorage", err);
 		}
 	}, [templateId, draftKeyParam]);
-
-	// Generate previews for all pages
 	useEffect(() => {
 		const generatePreviews = async () => {
 			if (!draft?.customized_data || !draft.customized_data.pages) return;
@@ -143,25 +141,6 @@ function PreviewPageInner() {
 	return (
 		<main className="min-h-screen bg-linear-to-br from-[#faf7f4] via-[#fdfaf7] to-[#f3e4d6]">
 			<div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-				<div className="mb-6 flex items-center justify-between">
-					<h1 className="text-xl font-semibold text-gray-900">Preview your card</h1>
-					<div className="flex gap-3">
-						<button
-							onClick={handleEditAgain}
-							className="inline-flex justify-center rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-semibold text-gray-800"
-						>
-							Edit again
-						</button>
-						<button
-							onClick={handlePublish}
-							disabled={!canPublish || publishing || isGenerating}
-							className="inline-flex justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-white disabled:bg-gray-300"
-						>
-							{publishing ? "Publishing…" : isGenerating ? "Generating previews…" : "Publish"}
-						</button>
-					</div>
-				</div>
-
 				{error && (
 					<div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-6 py-4">
 						<p className="text-sm font-medium text-red-700">{error}</p>
@@ -169,10 +148,10 @@ function PreviewPageInner() {
 				)}
 
 				{previews.length > 0 ? (
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+					<div className="max-w-xl mx-auto">
 						{previews.map((src: string, idx: number) => (
-							<div key={idx} className="rounded-2xl bg-white border shadow-sm overflow-hidden">
-								<div className="bg-[#f3e4d6]" style={{ aspectRatio: "4 / 5" }}>
+							<div key={idx} className="rounded-2xl py-1">
+								<div className="">
 									{src && src.trim() ? (
 										<img src={src} alt={`Preview ${idx + 1}`} className="w-full h-full object-contain" />
 									) : (
@@ -181,9 +160,23 @@ function PreviewPageInner() {
 										</div>
 									)}
 								</div>
-								<div className="px-4 py-3 text-sm text-gray-600">Page {idx + 1}</div>
 							</div>
 						))}
+							<div className="flex items-center justify-center gap-4 mt-8">
+								<button
+									onClick={handleEditAgain}
+									className="inline-flex justify-center rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-semibold text-gray-800 w-full"
+								>
+									Edit again
+								</button>
+								<button
+									onClick={handlePublish}
+									disabled={!canPublish || publishing || isGenerating}
+									className="inline-flex justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-white disabled:bg-gray-300 w-full"
+								>
+									{publishing ? "Publishing…" : isGenerating ? "Generating previews…" : "Publish"}
+								</button>
+							</div>
 					</div>
 				) : (
 					<div className="rounded-2xl border bg-white px-6 py-10 text-center text-gray-600">

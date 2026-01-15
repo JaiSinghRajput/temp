@@ -51,7 +51,7 @@ export default function TextEditor({
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileEditor, setShowMobileEditor] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  
+
   // Store customizations for each page in multipage templates
   const [pageCustomizations, setPageCustomizations] = useState<Map<number, { canvasData: any; previewDataUrl: string }>>(new Map());
 
@@ -66,12 +66,12 @@ export default function TextEditor({
   const currentPageData = isMultipage ? template.pages![currentPage] : null;
   // Check if there are saved customizations for this page, otherwise use template data
   const pageCustomization = isMultipage ? pageCustomizations.get(currentPage) : undefined;
-  
+
   // For multipage: use page-specific canvas data, for single: use template canvas_data
   const canvasData = isMultipage && currentPageData?.canvasData
     ? (pageCustomization?.canvasData || currentPageData.canvasData)
     : (pageCustomization?.canvasData || template.canvas_data);
-  
+
   if (isMultipage && canvasData) {
     console.log(`[TextEditor] Page ${currentPage} using:`, {
       hasPageCustomization: !!pageCustomization,
@@ -79,12 +79,12 @@ export default function TextEditor({
       firstTextElement: canvasData.textElements?.[0]?.text
     });
   }
-  
+
   // For multipage: use page-specific background, for single: use template background
-  const backgroundUrl = isMultipage 
+  const backgroundUrl = isMultipage
     ? (currentPageData?.imageUrl || template.template_image_url)
     : template.template_image_url;
-  
+
   const backgroundId = isMultipage
     ? currentPageData?.backgroundId
     : template.background_id;
@@ -117,8 +117,9 @@ export default function TextEditor({
       width,
       height,
       selection: false,
-    });
+      stopContextMenu: true,
 
+    });
     fabricCanvasRef.current = canvas;
 
     // Pre-load fonts from text elements BEFORE rendering canvas
@@ -247,7 +248,7 @@ export default function TextEditor({
 
           // Get updated text from the current canvas (which still has old page's text)
           const updatedTexts = getUpdatedTextContent(textObjectsRef.current);
-          
+
           // Check if anything actually changed before saving
           const hasChanges = updatedTexts.some(
             (ut) => {
@@ -269,9 +270,9 @@ export default function TextEditor({
 
             setPageCustomizations((prev) => {
               const updated = new Map(prev);
-              updated.set(lastSavedPageRef.current, { 
-                canvasData: customizedData, 
-                previewDataUrl: '' 
+              updated.set(lastSavedPageRef.current, {
+                canvasData: customizedData,
+                previewDataUrl: ''
               });
               console.log(`[TextEditor] Saved page ${lastSavedPageRef.current} customization`);
               return updated;
@@ -477,7 +478,7 @@ export default function TextEditor({
       // Save current page first
       const canvas = fabricCanvasRef.current;
       const currentCustomizations = new Map(pageCustomizations);
-      
+
       if (canvas && textObjectsRef.current.size > 0) {
         const updatedTexts = getUpdatedTextContent(textObjectsRef.current);
         const customizedData = {
@@ -580,128 +581,55 @@ export default function TextEditor({
   const isSelectedLocked = selectedTextElement?.locked ?? false;
 
   return (
-    <>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 py-8">
-        {/* Canvas Preview */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+    <div>
+      <div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 py-0 lg:py-6">
+          <div className="lg:col-span-2">
+            {isMultipage && (
+              <div className="flex justify-center mt-4 mb-3 px-4">
+                <div className="flex items-center gap-2 overflow-x-auto max-w-[90vw]">
+                  {Array.from({ length: totalPages }).map((_, idx) => {
+                    const isActive = idx === currentPage;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => onPageChange?.(idx)}
+                        className={`px-3 py-1.5 rounded-full border text-sm whitespace-nowrap transition
+                  ${isActive
+                            ? "bg-[#d18b47]/50 text-white border-[#d18b47]"
+                            : "bg-white text-black border-gray-300 hover:bg-gray-100"
+                          }`}
+                      >
+                        page {idx + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {error ? (
-              <div className="h-96 flex items-center justify-center bg-red-50 border border-red-200">
+              <div className="h-96 flex items-center justify-center bg-red-50 border">
                 <div className="text-center">
                   <p className="text-red-700 font-semibold mb-2">Error Loading Canvas</p>
                   <p className="text-red-600 text-sm">{error}</p>
                 </div>
               </div>
             ) : (
-              <div className="relative">
-                {/* Page Navigation for Multipage */}
-                {isMultipage ? (
-                  <div className="md:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3 bg-white/95 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg border border-gray-200">
-                    <button
-                      onClick={() => onPageChange?.(Math.max(0, currentPage - 1))}
-                      disabled={currentPage === 0}
-                      className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition"
-                      aria-label="Previous page"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
-                    <span className="text-sm font-medium text-gray-700 min-w-20 text-center">
-                      Page {currentPage + 1} of {totalPages}
-                    </span>
-                    <button
-                      onClick={() => onPageChange?.(Math.min(totalPages - 1, currentPage + 1))}
-                      disabled={currentPage === totalPages - 1}
-                      className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center transition"
-                      aria-label="Next page"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                  </div>
-                ):""}
 
-                <div ref={containerRef} className="flex items-center justify-center bg-gray-50 p-6 min-h-100">
-                  <canvas
-                    ref={canvasRef}
-                    className="border-2 border-gray-300 rounded-lg shadow-sm cursor-text"
-                  />
-                </div>
+              <div
+                ref={containerRef}
+                className="flex items-center justify-center min-h-100 overflow-auto touch-pan-y"
+              >
+                <canvas
+                  ref={canvasRef}
+                  className="block cursor-text touch-pan-y"
+                />
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Text Editor Sidebar (desktop) */}
-        <div className="lg:col-span-1 hidden lg:block">
-          <div className="bg-white rounded-xl shadow-lg p-6 sticky top-30">
-            {selectedTextElement && !isSelectedLocked ? (
-              <div className="space-y-4">
-                {/* Text Area */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Content
-                  </label>
-                  <textarea
-                    value={selectedText}
-                    onChange={handleTextChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                    rows={6}
-                    placeholder="Enter text here..."
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <p className="text-gray-500 text-sm">
-                  {selectedTextId && isSelectedLocked
-                    ? '🔒 This text field is locked and cannot be edited'
-                    : 'Click on any text in the card to edit it'}
-                </p>
-              </div>
-            )}
-            {isMultipage ? (
-              <div className="mt-6 flex items-center justify-between">
-                {/* Previous */}
-                <button
-                  onClick={() => onPageChange?.(currentPage - 1)}
-                  disabled={currentPage === 0}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition
-      ${currentPage === 0
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-white border text-blue-600 hover:bg-blue-50'
-                    }`}
-                >
-                  ← Previous
-                </button>
-
-                {/* Page info */}
-                <span className="text-sm text-gray-600">
-                  Page <span className="font-semibold">{currentPage + 1}</span>
-                </span>
-
-                {/* Next */}
-                <button
-                  onClick={() => onPageChange?.(currentPage + 1)}
-                  disabled={currentPage >= totalPages - 1}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition
-      ${currentPage >= totalPages - 1
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-white border text-blue-600 hover:bg-blue-50'
-                    }`}
-                >
-                  Next →
-                </button>
-              </div>
-
-            ):""}
-
-            {/* Preview and Publish Buttons - Only show on last page for multipage templates */}
+            {/* Bottom Buttons*/}
             {(!isMultipage || currentPage === totalPages - 1) ? (
-              <div className="mt-6 space-y-3">
-                {/* Preview Button - Always show */}
+              <div className="flex gap-4 items-center max-w-120 mx-auto my-6 px-4">
                 <button
                   onClick={handlePreview}
                   disabled={isSaving || isLoading}
@@ -720,82 +648,40 @@ export default function TextEditor({
                   {isSaving || isLoading ? 'Publishing...' : '✓ Publish'}
                 </button>
               </div>
-            ):""}
-
+            ) : ""}
+          </div>
+          {/* Text Editor Sidebar (desktop) */}
+          <div className="lg:col-span-1 hidden lg:block">
+            <div className="bg-white rounded-xl shadow-lg p-6 sticky top-30">
+              {selectedTextElement && !isSelectedLocked ? (
+                <div className="space-y-4">
+                  {/* Text Area */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Content
+                    </label>
+                    <textarea
+                      value={selectedText}
+                      onChange={handleTextChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      rows={6}
+                      placeholder="Enter text here..."
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 text-sm">
+                    {selectedTextId && isSelectedLocked
+                      ? '🔒 This text field is locked and cannot be edited'
+                      : 'Click on any text in the card to edit it'}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
-
-      {/* Mobile editor modal */}
-      {isMobile && showMobileEditor && selectedTextElement && !isSelectedLocked && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl p-6 animate-fade-in-up">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <p className="text-sm text-gray-500">Editing</p>
-                <h3 className="text-lg font-semibold text-gray-900">{selectedTextElement?.label || 'Text Field'}</h3>
-              </div>
-              <button
-                onClick={() => setShowMobileEditor(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <textarea
-                value={selectedText}
-                onChange={handleTextChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#d18b47] resize-none"
-                rows={5}
-                placeholder="Enter text here..."
-              />
-
-              <div className="bg-[#f3e4d6] border border-[#e4cdb4] rounded-lg p-4 text-xs text-[#8a5a24]">
-                <p className="font-semibold text-[#b87435] mb-3">Locked Properties</p>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>Font:</span>
-                    <span className="font-medium">{selectedTextElement?.fontFamily || 'Arial'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Size:</span>
-                    <span className="font-medium">{selectedTextElement?.fontSize}px</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Color:</span>
-                    <span
-                      className="w-6 h-6 rounded border border-[#e4cdb4]"
-                      style={{ backgroundColor: selectedTextElement?.fill || '#000000' }}
-                    ></span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowMobileEditor(false)}
-                  className="flex-1 px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    setShowMobileEditor(false);
-                    handlePreview();
-                  }}
-                  disabled={isSaving || isLoading}
-                  className="flex-1 px-4 py-2 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: 'linear-gradient(90deg, #d18b47, #b87435)' }}
-                >
-                  {isSaving || isLoading ? 'Preparing preview...' : 'Save & Preview'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 }

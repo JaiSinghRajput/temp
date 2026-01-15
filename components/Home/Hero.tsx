@@ -19,7 +19,7 @@ export default function HeroSection({className}: {className?: string}) {
     const [activeIndex, setActiveIndex] = useState(0);
 
     return (
-        <section className={`grid grid-cols-1 lg:grid-cols-2 items-center px-6 lg:px-20 py-20 gap-16 ${className ?? ''}`}>
+        <section className={`grid grid-cols-1 lg:grid-cols-2 items-center px-6 lg:px-20 py-10 gap-16 ${className ?? ''}`}>
 
             {/* Left Content */}
             <motion.div
@@ -51,7 +51,7 @@ export default function HeroSection({className}: {className?: string}) {
                         ease: "easeOut",
                         delay: 0.2,
                     }}
-                    className="text-4xl lg:text-5xl font-bold leading-tight"
+                    className="text-3xl lg:text-4xl font-bold leading-tight"
                 >
                     Exclusive Wedding Collection.
                 </motion.h1>
@@ -86,15 +86,15 @@ export default function HeroSection({className}: {className?: string}) {
                     {/* Thumbnails */}
                     <div
                         className="
-    z-10
+     z-10
     mt-4 lg:mt-0
     flex gap-4
     lg:flex-col
     justify-center
-    lg:absolute
-    lg:top-1/2
-    lg:-translate-y-1/2
-    lg:-right-12
+    absolute -bottom-10 left-1/2 -translate-x-1/2
+    lg:left-auto lg:bottom-auto
+    lg:top-1/2 lg:-translate-y-1/2
+    lg:-right-12 lg:translate-x-0
   "
                     >
                         {images.map((img, i) => {

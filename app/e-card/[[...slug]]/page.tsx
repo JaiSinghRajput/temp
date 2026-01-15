@@ -367,10 +367,8 @@ export default function ECardHomePage() {
                     ) : error ? (
                         <div className="text-center text-red-600">{error}</div>
                     ) : publishedCard ? (
-                        <div className="bg-white shadow rounded-xl overflow-hidden border border-gray-200">
+                        <div className="rounded-xl overflow-hidden">
                             <div className="p-6 space-y-4">
-                                <h1 className="text-2xl font-semibold text-gray-900">{publishedCard.user_name || 'Shared Card'}</h1>
-                                <p className="text-sm text-gray-600">Customized card preview</p>
                                 <ShareCard card={publishedCard} />
                             </div>
                         </div>

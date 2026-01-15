@@ -93,7 +93,7 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
                   ${
                     idx === currentPage
                       ? 'bg-blue-50 text-black shadow-sm border-[#e9ad99]/60'
-                      : 'bg-transparent text-black/80 border-white/30 hover:border-[#e9ad99]/60'
+                      : 'bg-transparent text-black/80 hover:border-[#e9ad99]/60'
                   }
                 `}
               >
@@ -105,8 +105,7 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
 
         {/* PREVIEW BOX */}
         <div className="w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl">
-          <div className="rounded-3xl border border-white/20 bg-black/40 p-3">
-            <div className="rounded-2xl overflow-hidden border border-white/20 bg-black">
+            <div className="rounded-xs overflow-hidden bg-black shadow-sm">
               <Carousel opts={{ loop: false }} setApi={setApi}>
                 <CarouselContent>
                   {pages.map((page: any, idx) => (
@@ -127,38 +126,18 @@ export function DetailView({ template, loading, error, onRetry }: TemplateDetail
                 </CarouselContent>
               </Carousel>
             </div>
-          </div>
         </div>
       </div>
 
       {/* DETAILS BELOW PREVIEW */}
       <div className="mt-10 flex flex-col items-center text-center">
-        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-gray-900">
-          {template.title}
-        </h1>
-
-        {template.description && (
-          <p className="text-base text-gray-600 mt-4 max-w-xl">
-            {template.description}
-          </p>
-        )}
-
-        <div className="mt-8 flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
           <Link
             href={`/e-card/customize/${template.id}`}
-            className="px-6 py-2.5 rounded-xl bg-[#d18b47] text-white font-semibold text-center hover:bg-[#c07c3c]"
+            className="w-full px-6 py-2.5 rounded-xl bg-[#d18b47] text-white font-semibold text-center hover:bg-[#c07c3c]"
           >
             Customize Card
           </Link>
-
-          <Link
-            href="/e-card"
-            className="px-6 py-2.5 rounded-xl border border-gray-300 text-gray-800 font-semibold text-center hover:border-gray-400"
-          >
-            Back to catalog
-          </Link>
         </div>
-      </div>
     </div>
   );
 }

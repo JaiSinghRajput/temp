@@ -133,11 +133,11 @@ export default function Home() {
           </>
         )}
       </section>
-      <section className="py-10 bg-amber-50">
+      <section className="py-10 bg-amber-50 w-full">
         {carouselItems.length > 0 && (
           <SmoothCarousel
             items={carouselItems}
-            visibleItems={5}
+            visibleItems={1}
             title="Best E-Cards"
           />
         )}

@@ -42,14 +42,14 @@ export default function CustomizeECardPage() {
       setError('');
 
       console.log('[CustomizePage] Fetching template with ID:', templateId);
-      
+
       // Add timeout to prevent infinite loading
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-      
+
       const result = await templateService.getTemplateById(templateId);
       clearTimeout(timeoutId);
-      
+
       console.log('[CustomizePage] API result:', { success: result?.success, hasData: !!result?.data, result });
 
       if (result?.success && result?.data) {
@@ -61,7 +61,7 @@ export default function CustomizeECardPage() {
           pages_count: tpl.pages?.length,
           has_canvas_data: !!tpl.canvas_data,
         });
-        
+
         // Load draft from sessionStorage if available
         try {
           const draftKey = `ecard_draft_${templateId}_${user?.uid || 'guest'}`;
@@ -81,10 +81,12 @@ export default function CustomizeECardPage() {
               const isMulti = customized.is_multipage && Array.isArray(customized.pages);
               if (isMulti && Array.isArray(tpl.pages)) {
                 console.log('[CustomizePage] Restoring multipage template');
-                tpl = { ...tpl, pages: tpl.pages.map((p, idx) => ({
-                  ...p,
-                  canvasData: customized.pages?.[idx]?.canvasData || p.canvasData,
-                })) } as Template;
+                tpl = {
+                  ...tpl, pages: tpl.pages.map((p, idx) => ({
+                    ...p,
+                    canvasData: customized.pages?.[idx]?.canvasData || p.canvasData,
+                  }))
+                } as Template;
               } else if (customized.textElements) {
                 // For single page, the customized data is the entire canvas data
                 tpl = { ...tpl, canvas_data: { ...tpl.canvas_data, ...customized } } as Template;
@@ -102,7 +104,7 @@ export default function CustomizeECardPage() {
       }
     } catch (err) {
       console.error('Error fetching template:', err);
-      const errorMsg = err instanceof Error 
+      const errorMsg = err instanceof Error
         ? (err.name === 'AbortError' ? 'Request timed out. Please try again.' : err.message)
         : 'Failed to load template';
       setError(errorMsg);
@@ -204,34 +206,6 @@ export default function CustomizeECardPage() {
   }
 
   /* -----------------------------
-     AUTH GUARD
-  ------------------------------ */
-  if (!user) {
-    return (
-      <main className="min-h-screen bg-linear-to-br from-[#faf7f4] to-[#f3e4d6] flex items-center justify-center px-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center space-y-4">
-          <h2 className="text-xl font-semibold text-gray-900">Sign in to customize</h2>
-          <p className="text-sm text-gray-600">Please login to personalize and publish this card.</p>
-          <div className="flex justify-center gap-3">
-            <Link
-              href={loginHref}
-              className="inline-flex justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-primaryDark transition"
-            >
-              Login
-            </Link>
-            <Link
-              href={registerHref}
-              className="inline-flex justify-center rounded-lg bg-gray-100 px-6 py-2.5 text-sm font-semibold text-gray-800"
-            >
-              Register
-            </Link>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  /* -----------------------------
      ERROR STATE
   ------------------------------ */
   if (error || !template) {
@@ -271,17 +245,38 @@ export default function CustomizeECardPage() {
             </p>
           </div>
         )}
-
-        <div className="bg-white rounded-2xl shadow-sm border border-primary/10">
-          <TextEditor
-            templateId={Number(templateId)}
-            template={template}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-            onPreview={handlePreview}
-            onPublish={handlePublish}
-            isLoading={publishing}
-          />
+        <div className="border-primary/10">
+          {!user ? (
+            <main className="min-h-screen bg-linear-to-br from-[#faf7f4] to-[#f3e4d6] flex items-center justify-center px-4">
+              <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center space-y-4">
+                <h2 className="text-xl font-semibold text-gray-900">Sign in to customize</h2>
+                <p className="text-sm text-gray-600">Please login to personalize and publish this card.</p>
+                <div className="flex justify-center gap-3">
+                  <Link
+                    href={loginHref}
+                    className="inline-flex justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-medium text-white hover:bg-primaryDark transition"
+                  >
+                    Login
+                  </Link>
+                  <Link
+                    href={registerHref}
+                    className="inline-flex justify-center rounded-lg bg-gray-100 px-6 py-2.5 text-sm font-semibold text-gray-800"
+                  >
+                    Register
+                  </Link>
+                </div>
+              </div>
+            </main>
+          ) : (
+            <TextEditor
+              templateId={Number(templateId)}
+              template={template}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+              onPreview={handlePreview}
+              onPublish={handlePublish}
+              isLoading={publishing}
+            />)}
         </div>
       </div>
     </main>

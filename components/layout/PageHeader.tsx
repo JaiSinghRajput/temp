@@ -19,7 +19,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
 }) => {
   return (
     <section
-      className="relative w-full h-65 flex items-center justify-center"
+      className="relative w-full h-50 flex items-center justify-center"
       style={{
         backgroundImage: backgroundImage
           ? `url(${backgroundImage})`
@@ -33,7 +33,7 @@ const PageHeader: React.FC<PageHeaderProps> = ({
 
       {/* Content */}
       <div className="relative z-10 text-center">
-        <h1 className="text-3xl md:text-4xl font-semibold tracking-wide text-black uppercase">
+        <h1 className="text-2xl md:text-3xl font-semibold tracking-wide text-black uppercase">
           {title}
         </h1>
 
