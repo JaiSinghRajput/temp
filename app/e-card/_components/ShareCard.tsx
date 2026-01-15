@@ -6,6 +6,7 @@ import { loadTextOnlyCanvas, loadFontsFromElements } from '@/lib/text-only-canva
 import { useCanvasTextAnimation } from '@/hooks/useCanvasTextAnimation';
 import { useAuth } from '@/contexts/AuthContext';
 import jsPDF from 'jspdf';
+import { Button } from '@mui/material';
 
 interface ShareCardProps {
   card: UserEcard & {
@@ -249,79 +250,119 @@ export default function ShareCard({ card }: ShareCardProps) {
   }
 
   return (
-    <div className="relative rounded-2xl mt-10">
-      {/* ✅ Page Buttons (Top Center Tabs) */}
-      {isMultipage && (
-        <div className="absolute -top-15 left-1/2 -translate-x-1/2 z-30">
-          <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-full border border-gray-200 shadow-sm">
-            {Array.from({ length: totalPages }).map((_, idx) => {
-              const isActive = idx === currentPage;
+    <div className="relative rounded-2xl mt-10 flex justify-center">
+      {/* Width lock to match canvas max size */}
+      <div className="w-full max-w-120">
 
-              return (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setCurrentPage(idx)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition
-                  ${isActive
-                      ? "bg-[#d18b47] text-white"
-                      : "bg-transparent text-gray-700 hover:bg-gray-100"
-                    }`}
-                >
-                  page {idx + 1}
-                </button>
-              );
-            })}
+        {/* ✅ Page Buttons (Top Center Tabs) */}
+        {isMultipage && (
+          <div className="absolute -top-15 left-1/2 -translate-x-1/2 z-30">
+            <div className="flex items-center gap-2 bg-white px-2 py-1 rounded-full border border-gray-200 shadow-sm">
+              {Array.from({ length: totalPages }).map((_, idx) => {
+                const isActive = idx === currentPage;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setCurrentPage(idx)}
+                    className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition
+                    ${isActive
+                        ? "bg-[#d18b47] text-white"
+                        : "bg-transparent text-gray-700 hover:bg-gray-100"
+                      }`}
+                  >
+                    page {idx + 1}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ✅ Canvas */}
-      {error ? (
-        <div className="h-96 flex items-center justify-center bg-red-50">
-          <p className="text-red-700 text-sm">{error}</p>
-        </div>
-      ) : (
-        <div
-          ref={containerRef}
-          className="relative overflow-auto"
-          style={{
-            touchAction: 'pan-y',
-            WebkitOverflowScrolling: 'touch',
-          }}
-        >
-          <div className="pointer-events-none">
-            <canvas ref={canvasRef} />
+        {/* Canvas */}
+        {error ? (
+          <div className="h-96 flex items-center justify-center bg-red-50 rounded-xl">
+            <p className="text-red-700 text-sm">{error}</p>
           </div>
-        </div>
-      )}
+        ) : (
+          <div
+            ref={containerRef}
+            className="relative overflow-auto rounded-xl"
+            style={{
+              touchAction: 'pan-y',
+              WebkitOverflowScrolling: 'touch',
+            }}
+          >
+            <div className="pointer-events-none">
+              <canvas ref={canvasRef} />
+            </div>
+          </div>
+        )}
 
-      {/* Download actions – only for owner */}
-      {isOwner && (
-        <div className="border-t border-gray-200 px-4 py-4 flex gap-3">
-          {!isMultipage && (
-            <button
-              onClick={() => {
-                const preview = card.preview_url || parsedPreviewUrls[0];
-                if (preview) window.open(preview, "_blank", "noopener");
-              }}
-              className="flex-1 px-4 py-2 bg-gray-100 text-gray-800 rounded-lg font-semibold hover:bg-gray-200 transition"
-            >
-              Download Image
-            </button>
-          )}
+        {/* 🔗 Share Actions */}
+        <div className="px-4 pt-4 flex gap-2">
+          <button
+            onClick={() => navigator.share?.({ url: window.location.href })}
+            className="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-medium hover:bg-gray-100 transition"
+          >
+            🔗 Share
+          </button>
 
-          {isMultipage && (
-            <button
-              onClick={handleDownloadPdf}
-              disabled={isGeneratingPdf}
-              className="flex-1 px-4 py-2 border-2 border-[#d18b47] text-[#d18b47] rounded-lg font-semibold hover:bg-[#d18b47] hover:text-white transition disabled:opacity-60"
-            >
-              {isGeneratingPdf ? "📄 Generating PDF..." : "📄 Download PDF"}
-            </button>
-          )}
+          <button
+            onClick={() =>
+              window.open(
+                `https://wa.me/?text=${encodeURIComponent(window.location.href)}`,
+                '_blank'
+              )
+            }
+            className="flex-1 border border-green-500 text-green-600 rounded-lg py-2 text-sm font-medium hover:bg-green-50 transition"
+          >
+            🟢 WhatsApp
+          </button>
+
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(window.location.href);
+            }}
+            className="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-medium hover:bg-gray-100 transition"
+          >
+            📋 Copy
+          </button>
         </div>
-      )}
+
+        {/* ⬇️ Download Actions */}
+        {isOwner && (
+          <div className="border-t border-gray-200 px-4 py-4 flex gap-3">
+            {!isMultipage && (
+              <Button
+                variant="outlined"
+                className="w-full"
+              >
+                <a href={fabricCanvasRef.current?.toDataURL({
+                  format: 'png',
+                  quality: 1,
+                  multiplier: 3,
+                })} download={`card-${card.id}-${Date.now()}.png`}>
+                  📷
+                  Download Image
+                </a>
+              </Button>
+            )}
+
+            {isMultipage && (
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isGeneratingPdf}
+                className="flex-1 px-4 py-2 border-2 border-[#d18b47] text-[#d18b47] rounded-lg font-semibold hover:bg-[#d18b47] hover:text-white transition disabled:opacity-60"
+              >
+                {isGeneratingPdf ? "📄 Generating PDF..." : "📄 Download PDF"}
+              </button>
+            )}
+          </div>
+        )}
+
+      </div>
     </div>
   );
+
 }
